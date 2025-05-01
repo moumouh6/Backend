@@ -13,13 +13,14 @@ import sqlalchemy.orm
 
 from database import get_db, engine
 from models.user import User, Base
+from models.conference import ConferenceRequest 
 from models.course import Course, CourseMaterial, CourseProgress
 from schemas import (
     UserCreate, User as UserSchema, Token,
     CourseCreate, Course as CourseSchema,
     CourseMaterial as CourseMaterialSchema,
     UserApproval, PendingUser, Notification,
-    MessageCreate, MessageInDB
+    MessageCreate, MessageInDB, ConferenceRequestCreate, ConferenceRequestOut, ConferenceStatus
 )
 from auth import (
     verify_password,
@@ -876,3 +877,76 @@ def get_all_users(db: Session = Depends(get_db)):
     """
     users = db.query(User).all()
     return users
+
+@app.post("/request", response_model=ConferenceRequestOut)
+def request_conference(
+    data: ConferenceRequestCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ["prof", "admin"]:
+        raise HTTPException(status_code=403, detail="Only prof or admin can request conferences")
+
+    # Créer un dictionnaire avec les données de la requête
+    conference_data = data.dict()
+    # Ajouter l'ID de l'utilisateur qui fait la requête
+    conference_data["requested_by_id"] = current_user.id
+
+    new_conf = ConferenceRequest(**conference_data)
+    db.add(new_conf)
+    db.commit()
+    db.refresh(new_conf)
+    return new_conf
+
+@app.put("/admin/approve/{conf_id}")
+def approve_conference(conf_id: int, approve: bool, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can approve or deny conferences")
+
+    conf = db.query(ConferenceRequest).filter(ConferenceRequest.id == conf_id).first()
+    if not conf:
+        raise HTTPException(status_code=404, detail="Conference not found")
+
+    conf.status = "approved" if approve else "denied"
+    db.commit()
+    return {"message": f"Conference {'approved' if approve else 'denied'}."}
+
+
+@app.get("/admin/pending-conferences", response_model=List[ConferenceRequestOut])
+def get_pending_conference_requests(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    # Vérifier si l'utilisateur est admin
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin can view pending conference requests"
+        )
+    
+    # Récupérer uniquement les demandes en attente
+    pending_requests = db.query(ConferenceRequest).filter(
+        ConferenceRequest.status == ConferenceStatus.pending
+    ).all()
+    
+    return pending_requests
+
+
+@app.get("/prof/my-conferences", response_model=List[ConferenceRequestOut])
+def get_professor_conferences(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    # Vérifier si l'utilisateur est un professeur
+    if current_user.role != "prof":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only professors can view their conference requests"
+        )
+    
+    # Récupérer toutes les demandes du professeur
+    professor_requests = db.query(ConferenceRequest).filter(
+        ConferenceRequest.requested_by_id == current_user.id
+    ).order_by(ConferenceRequest.created_at.desc()).all()
+    
+    return professor_requests

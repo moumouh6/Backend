@@ -23,4 +23,6 @@ class User(Base):
     course_progress = relationship("CourseProgress", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
-    received_messages = relationship("Message", foreign_keys="Message.receiver_id", back_populates="receiver") 
+    received_messages = relationship("Message", foreign_keys="Message.receiver_id", back_populates="receiver")
+    conference_requests = relationship("ConferenceRequest", back_populates="requested_by") 
+

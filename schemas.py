@@ -114,6 +114,30 @@ class MessageInDB(Message):
     receiver: User
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
 
 
+class ConferenceStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    denied = "denied"
+
+class ConferenceRequestCreate(BaseModel):
+    name: str
+    description: Optional[str]
+    link: Optional[str]
+    type: str  # e.g., "online", "in-person"
+    department: str
+
+class ConferenceRequestOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    link: Optional[str]
+    type: str
+    department: str
+    status: ConferenceStatus
+    requested_by_id: int
+
+    class Config:
+        from_attributes = True
