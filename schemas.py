@@ -127,7 +127,7 @@ class ConferenceRequestCreate(BaseModel):
     description: Optional[str]
     link: Optional[str]
     type: str  # e.g., "online", "in-person"
-    department: str
+    departement: str
 
 class ConferenceRequestOut(BaseModel):
     id: int
@@ -135,11 +135,11 @@ class ConferenceRequestOut(BaseModel):
     description: Optional[str]
     link: Optional[str]
     type: str
-    department: str
+    departement: str
     status: ConferenceStatus
     requested_by_id: int
     created_at: datetime
-    requested_by: User  # Include the user who created the conference
+    requested_by: User
 
     class Config:
         from_attributes = True

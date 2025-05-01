@@ -17,7 +17,7 @@ class ConferenceRequest(Base):
     description = Column(Text)
     link = Column(String, nullable=True)
     type = Column(String, nullable=False)  # e.g., "online" or "in-person"
-    department = Column(String, nullable=False)
+    departement = Column(String, nullable=False)
 
     requested_by_id = Column(Integer, ForeignKey("users.id"))
     status = Column(Enum(ConferenceStatus), default=ConferenceStatus.pending)

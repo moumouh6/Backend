@@ -18,7 +18,7 @@ def run_migration():
                 description TEXT,
                 link VARCHAR,
                 type VARCHAR NOT NULL,
-                department VARCHAR NOT NULL,
+                departement VARCHAR NOT NULL,
                 requested_by_id INTEGER REFERENCES users(id),
                 status VARCHAR NOT NULL DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

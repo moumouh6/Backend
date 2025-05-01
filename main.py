@@ -964,7 +964,7 @@ def get_calendar(
     # Filter based on user role
     if current_user.role == "employer":
         # For employers, only show conferences from their department
-        query = query.filter(ConferenceRequest.department == current_user.departement)
+        query = query.filter(ConferenceRequest.departement == current_user.departement)
     elif current_user.role == "prof":
         # For professors, show all conferences
         pass
