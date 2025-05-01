@@ -20,7 +20,9 @@ from schemas import (
     CourseCreate, Course as CourseSchema,
     CourseMaterial as CourseMaterialSchema,
     UserApproval, PendingUser, Notification,
-    MessageCreate, MessageInDB, ConferenceRequestCreate, ConferenceRequestOut, ConferenceStatus
+    MessageCreate, MessageInDB, ConferenceRequestCreate, ConferenceRequestOut, ConferenceStatus,
+    UserSettings, UserSettingsUpdate, UserProfileUpdate, PasswordUpdate, UserSettingsResponse,
+    UserPreferences, UserPreferencesUpdate, UserPersonalInfo, UserPersonalInfoUpdate
 )
 from auth import (
     verify_password,
@@ -993,3 +995,96 @@ def get_calendar(
     ]
     
     return valid_conferences
+
+@app.get("/personal-info", response_model=UserPersonalInfo)
+def get_personal_info(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Get user's personal information"""
+    return {
+        "nom": current_user.nom,
+        "prenom": current_user.prenom,
+        "telephone": current_user.telephone
+    }
+
+@app.put("/personal-info")
+def update_personal_info(
+    info: UserPersonalInfoUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Update user's personal information"""
+    if info.nom is not None:
+        current_user.nom = info.nom
+    if info.prenom is not None:
+        current_user.prenom = info.prenom
+    if info.telephone is not None:
+        current_user.telephone = info.telephone
+    
+    db.commit()
+    return {"message": "Personal information updated successfully"}
+
+@app.get("/preferences", response_model=UserPreferences)
+def get_user_preferences(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Get user's preferences (language and theme)"""
+    return {
+        "language": current_user.language,
+        "theme": current_user.theme
+    }
+
+@app.put("/preferences")
+def update_user_preferences(
+    preferences: UserPreferencesUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Update user's preferences (language and theme)"""
+    if preferences.language is not None:
+        if preferences.language not in ["fr", "en"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid language. Must be 'fr' or 'en'"
+            )
+        current_user.language = preferences.language
+    
+    if preferences.theme is not None:
+        if preferences.theme not in ["light", "dark"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid theme. Must be 'light' or 'dark'"
+            )
+        current_user.theme = preferences.theme
+    
+    db.commit()
+    return {"message": "Preferences updated successfully"}
+
+@app.put("/password")
+def update_password(
+    password_update: PasswordUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Update user's password"""
+    # Verify current password
+    if not verify_password(password_update.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+    
+    # Verify new passwords match
+    if password_update.new_password != password_update.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New passwords do not match"
+        )
+    
+    # Update password
+    current_user.hashed_password = get_password_hash(password_update.new_password)
+    db.commit()
+    
+    return {"message": "Password updated successfully"}

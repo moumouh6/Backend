@@ -17,6 +17,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_approved = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    language = Column(String, default="fr")  # Default language is French
+    theme = Column(String, default="light")  # Default theme is light
     
     # Relationship with Course
     courses = relationship("Course", back_populates="instructor")

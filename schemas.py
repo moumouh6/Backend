@@ -143,3 +143,58 @@ class ConferenceRequestOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class UserSettings(BaseModel):
+    language: str  # "fr" or "en"
+    theme: str     # "light" or "dark"
+
+class UserSettingsUpdate(BaseModel):
+    nom: Optional[str] = None
+    prenom: Optional[str] = None
+    telephone: Optional[str] = None
+    language: Optional[str] = None
+    theme: Optional[str] = None
+
+class UserProfileUpdate(BaseModel):
+    nom: Optional[str] = None
+    prenom: Optional[str] = None
+    telephone: Optional[str] = None
+
+class PasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+class UserSettingsResponse(BaseModel):
+    nom: str
+    prenom: str
+    telephone: str
+    language: str
+    theme: str
+
+    class Config:
+        from_attributes = True
+
+class UserPersonalInfo(BaseModel):
+    nom: str
+    prenom: str
+    telephone: str
+
+    class Config:
+        from_attributes = True
+
+class UserPersonalInfoUpdate(BaseModel):
+    nom: Optional[str] = None
+    prenom: Optional[str] = None
+    telephone: Optional[str] = None
+
+class UserPreferences(BaseModel):
+    language: str
+    theme: str
+
+    class Config:
+        from_attributes = True
+
+class UserPreferencesUpdate(BaseModel):
+    language: Optional[str] = None
+    theme: Optional[str] = None

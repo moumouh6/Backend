@@ -26,6 +26,33 @@ def run_migration():
         """))
         conn.commit()
 
+    # Add language and theme columns to users table
+    with engine.connect() as conn:
+        # Check if columns exist
+        result = conn.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'users' 
+            AND column_name IN ('language', 'theme')
+        """))
+        existing_columns = [row[0] for row in result]
+        
+        # Add language column if it doesn't exist
+        if 'language' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE users 
+                ADD COLUMN language VARCHAR DEFAULT 'fr'
+            """))
+        
+        # Add theme column if it doesn't exist
+        if 'theme' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE users 
+                ADD COLUMN theme VARCHAR DEFAULT 'light'
+            """))
+        
+        conn.commit()
+
 if __name__ == "__main__":
     run_migration()
     print("Migration completed successfully!") 
