@@ -950,3 +950,46 @@ def get_professor_conferences(
     ).order_by(ConferenceRequest.created_at.desc()).all()
     
     return professor_requests
+
+@app.get("/calendar", response_model=List[ConferenceRequestOut])
+def get_calendar(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    # Base query for conferences with joined user data
+    query = db.query(ConferenceRequest).options(
+        sqlalchemy.orm.joinedload(ConferenceRequest.requested_by)
+    )
+    
+    # Filter based on user role
+    if current_user.role == "employer":
+        # For employers, only show conferences from their department
+        query = query.filter(ConferenceRequest.department == current_user.departement)
+    elif current_user.role == "prof":
+        # For professors, show all conferences
+        pass
+    elif current_user.role == "admin":
+        # For admins, show all conferences
+        pass
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Invalid role."
+        )
+    
+    # Get only approved conferences
+    query = query.filter(ConferenceRequest.status == ConferenceStatus.approved)
+    
+    # Order by creation date
+    query = query.order_by(ConferenceRequest.created_at)
+    
+    # Execute query
+    conferences = query.all()
+    
+    # Filter out conferences without required data
+    valid_conferences = [
+        conf for conf in conferences 
+        if conf.requested_by_id is not None and conf.created_at is not None
+    ]
+    
+    return valid_conferences

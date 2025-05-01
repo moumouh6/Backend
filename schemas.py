@@ -138,6 +138,8 @@ class ConferenceRequestOut(BaseModel):
     department: str
     status: ConferenceStatus
     requested_by_id: int
+    created_at: datetime
+    requested_by: User  # Include the user who created the conference
 
     class Config:
         from_attributes = True
