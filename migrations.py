@@ -19,6 +19,9 @@ def run_migration():
                 link VARCHAR,
                 type VARCHAR NOT NULL,
                 departement VARCHAR NOT NULL,
+                date TIMESTAMP NOT NULL,
+                time VARCHAR NOT NULL,
+                image_path VARCHAR,
                 requested_by_id INTEGER REFERENCES users(id),
                 status VARCHAR NOT NULL DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

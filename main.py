@@ -900,27 +900,84 @@ def get_all_users(db: Session = Depends(get_db)):
     return users
 
 @app.post("/request", response_model=ConferenceRequestOut)
-def request_conference(
-    data: ConferenceRequestCreate,
+async def request_conference(
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    link: Optional[str] = Form(None),
+    type: str = Form(...),
+    departement: str = Form(...),
+    date: str = Form(...),  # Format: "YYYY-MM-DD"
+    time: str = Form(...),  # Format: "HH:MM"
+    image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if current_user.role not in ["prof", "admin"]:
         raise HTTPException(status_code=403, detail="Only prof or admin can request conferences")
 
-    # Créer un dictionnaire avec les données de la requête
-    conference_data = data.dict()
-    # Ajouter l'ID de l'utilisateur qui fait la requête
-    conference_data["requested_by_id"] = current_user.id
+    # Convert date string to datetime
+    try:
+        conference_date = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid date format. Please use YYYY-MM-DD"
+        )
 
+    # Validate time format
+    try:
+        datetime.strptime(time, "%H:%M")
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid time format. Please use HH:MM"
+        )
+
+    # Create conference data
+    conference_data = {
+        "name": name,
+        "description": description,
+        "link": link,
+        "type": type,
+        "departement": departement,
+        "date": conference_date,
+        "time": time,
+        "requested_by_id": current_user.id
+    }
+
+    # Handle image upload if provided
+    if image:
+        # Create a unique directory for conference images
+        image_dir = os.path.join("uploads", "conferences")
+        os.makedirs(image_dir, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = os.path.splitext(image.filename)[1]
+        unique_filename = f"conf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{file_extension}"
+        image_path = os.path.join(image_dir, unique_filename)
+        
+        # Save the file
+        with open(image_path, "wb") as buffer:
+            content = await image.read()
+            buffer.write(content)
+        
+        conference_data["image_path"] = image_path
+
+    # Create new conference request
     new_conf = ConferenceRequest(**conference_data)
     db.add(new_conf)
     db.commit()
     db.refresh(new_conf)
+    
     return new_conf
 
-@app.put("/admin/approve/{conf_id}")
-def approve_conference(conf_id: int, approve: bool, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@app.put("/admin/approve/{conf_id}", response_model=ConferenceRequestOut)
+def approve_conference(
+    conf_id: int,
+    approve: bool,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admin can approve or deny conferences")
 
@@ -928,47 +985,46 @@ def approve_conference(conf_id: int, approve: bool, db: Session = Depends(get_db
     if not conf:
         raise HTTPException(status_code=404, detail="Conference not found")
 
-    conf.status = "approved" if approve else "denied"
+    conf.status = ConferenceStatus.approved if approve else ConferenceStatus.denied
     db.commit()
-    return {"message": f"Conference {'approved' if approve else 'denied'}."}
-
+    db.refresh(conf)
+    return conf
 
 @app.get("/admin/pending-conferences", response_model=List[ConferenceRequestOut])
 def get_pending_conference_requests(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
-    # Vérifier si l'utilisateur est admin
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admin can view pending conference requests"
         )
     
-    # Récupérer uniquement les demandes en attente
-    pending_requests = db.query(ConferenceRequest).filter(
+    pending_requests = db.query(ConferenceRequest).options(
+        sqlalchemy.orm.joinedload(ConferenceRequest.requested_by)
+    ).filter(
         ConferenceRequest.status == ConferenceStatus.pending
-    ).all()
+    ).order_by(ConferenceRequest.date).all()
     
     return pending_requests
-
 
 @app.get("/prof/my-conferences", response_model=List[ConferenceRequestOut])
 def get_professor_conferences(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
-    # Vérifier si l'utilisateur est un professeur
     if current_user.role != "prof":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only professors can view their conference requests"
         )
     
-    # Récupérer toutes les demandes du professeur
-    professor_requests = db.query(ConferenceRequest).filter(
+    professor_requests = db.query(ConferenceRequest).options(
+        sqlalchemy.orm.joinedload(ConferenceRequest.requested_by)
+    ).filter(
         ConferenceRequest.requested_by_id == current_user.id
-    ).order_by(ConferenceRequest.created_at.desc()).all()
+    ).order_by(ConferenceRequest.date.desc()).all()
     
     return professor_requests
 
@@ -1001,19 +1057,55 @@ def get_calendar(
     # Get only approved conferences
     query = query.filter(ConferenceRequest.status == ConferenceStatus.approved)
     
-    # Order by creation date
-    query = query.order_by(ConferenceRequest.created_at)
+    # Order by date
+    query = query.order_by(ConferenceRequest.date)
     
     # Execute query
     conferences = query.all()
     
-    # Filter out conferences without required data
-    valid_conferences = [
-        conf for conf in conferences 
-        if conf.requested_by_id is not None and conf.created_at is not None
-    ]
+    return conferences
+
+@app.get("/conferences/{conference_id}", response_model=ConferenceRequestOut)
+def get_conference(
+    conference_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    conference = db.query(ConferenceRequest).options(
+        sqlalchemy.orm.joinedload(ConferenceRequest.requested_by)
+    ).filter(ConferenceRequest.id == conference_id).first()
     
-    return valid_conferences
+    if not conference:
+        raise HTTPException(status_code=404, detail="Conference not found")
+    
+    # Check if user has access to this conference
+    if current_user.role == "employer" and conference.departement != current_user.departement:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this conference"
+        )
+    
+    return conference
+
+@app.get("/conferences/{conference_id}/image")
+async def get_conference_image(
+    conference_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    conference = db.query(ConferenceRequest).filter(ConferenceRequest.id == conference_id).first()
+    
+    if not conference:
+        raise HTTPException(status_code=404, detail="Conference not found")
+    
+    if not conference.image_path or not os.path.exists(conference.image_path):
+        raise HTTPException(status_code=404, detail="Conference image not found")
+    
+    return FileResponse(
+        conference.image_path,
+        media_type="image/jpeg",  # Adjust based on your image type
+        filename=os.path.basename(conference.image_path)
+    )
 
 @app.get("/personal-info", response_model=UserPersonalInfo)
 def get_personal_info(

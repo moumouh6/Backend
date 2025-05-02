@@ -18,6 +18,9 @@ class ConferenceRequest(Base):
     link = Column(String, nullable=True)
     type = Column(String, nullable=False)  # e.g., "online" or "in-person"
     departement = Column(String, nullable=False)
+    date = Column(DateTime, nullable=False)  # Date de la conférence
+    time = Column(String, nullable=False)  # Heure de la conférence (format HH:MM)
+    image_path = Column(String, nullable=True)  # Chemin de l'image de la conférence
 
     requested_by_id = Column(Integer, ForeignKey("users.id"))
     status = Column(Enum(ConferenceStatus), default=ConferenceStatus.pending)
