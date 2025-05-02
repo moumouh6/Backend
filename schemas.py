@@ -158,7 +158,8 @@ class UserSettingsUpdate(BaseModel):
 class UserProfileUpdate(BaseModel):
     nom: Optional[str] = None
     prenom: Optional[str] = None
-    telephone: Optional[str] = None
+    departement: Optional[str] = None
+    role: Optional[str] = None
 
 class PasswordUpdate(BaseModel):
     current_password: str

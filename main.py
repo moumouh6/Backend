@@ -658,12 +658,6 @@ async def employer_dashboard(
     courses = db.query(Course).all()
     
     return {
-        "user_info": {
-            "nom": current_user.nom,
-            "prenom": current_user.prenom,
-            "email": current_user.email,
-            "departement": current_user.departement
-        },
         "available_courses": [
             {
                 "id": course.id,
@@ -671,7 +665,6 @@ async def employer_dashboard(
                 "description": course.description,
                 "instructor": {
                     "nom": course.instructor.nom,
-                    "prenom": course.instructor.prenom
                 },
                 "materials_count": len(course.materials)
             }
@@ -1088,3 +1081,62 @@ def update_password(
     db.commit()
     
     return {"message": "Password updated successfully"}
+
+@app.put("/admin/users/{user_id}")
+def admin_update_user(
+    user_id: int,
+    user_update: UserProfileUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Admin endpoint to update another user's information"""
+    # Verify admin role
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin can update user information"
+        )
+    
+    # Get the user to update
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Update user information
+    if user_update.nom is not None:
+        user.nom = user_update.nom
+    if user_update.prenom is not None:
+        user.prenom = user_update.prenom
+    if user_update.departement is not None:
+        user.departement = user_update.departement
+    if user_update.role is not None:
+        # Validate role
+        if user_update.role not in ["prof", "employer"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role. Must be 'prof' or 'employer'"
+            )
+        user.role = user_update.role
+    
+    try:
+        db.commit()
+        db.refresh(user)
+        return {
+            "message": "User information updated successfully",
+            "updated_user": {
+                "id": user.id,
+                "nom": user.nom,
+                "prenom": user.prenom,
+                "departement": user.departement,
+                "role": user.role
+            }
+        }
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred while updating user"
+        )
