@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, constr
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+from fastapi import UploadFile
 
 
 class UserBase(BaseModel):
@@ -39,16 +40,22 @@ class TokenData(BaseModel):
 
 # Course schemas
 class CourseBase(BaseModel):
-    title: str
-    description: str
-    departement: Optional[str] = None
+    title: str  # Nom du cours
+    description: str  # Description
+    departement: str  # Département
+    domain: str  # Domaine
+    external_links: Optional[str] = None  # Liens externes
+    quiz_link: Optional[str] = None  # Lien du quiz
 
 class CourseCreate(CourseBase):
-    pass
+    course_photo: Optional[UploadFile] = None  # Photo du cours
+    course_material: Optional[UploadFile] = None  # Matériel de cours (PDF)
+    course_record: Optional[UploadFile] = None  # Record du cours (optionnel)
 
 class CourseMaterialBase(BaseModel):
     file_name: str
     file_type: str
+    file_category: str  # 'photo', 'material', or 'record'
 
 class CourseMaterialCreate(CourseMaterialBase):
     pass

@@ -22,7 +22,8 @@ from schemas import (
     UserApproval, PendingUser, Notification,
     MessageCreate, MessageInDB, ConferenceRequestCreate, ConferenceRequestOut, ConferenceStatus,
     UserSettings, UserSettingsUpdate, UserProfileUpdate, PasswordUpdate, UserSettingsResponse,
-    UserPreferences, UserPreferencesUpdate, UserPersonalInfo, UserPersonalInfoUpdate
+    UserPreferences, UserPreferencesUpdate, UserPersonalInfo, UserPersonalInfoUpdate,
+    CourseBase
 )
 from auth import (
     verify_password,
@@ -334,20 +335,69 @@ async def read_users_me(
 
 # Course endpoints
 @app.post("/courses/", response_model=CourseSchema)
-def create_course(
-    course: CourseCreate,
+async def create_course(
     current_user: Annotated[User, Depends(verify_professor)],
+    course: CourseCreate,
     db: Session = Depends(get_db)
 ):
+    """Create a new course with all its materials in a single request"""
+    # Create the course
     db_course = Course(
         title=course.title,
         description=course.description,
-        instructor_id=current_user.id,
-        departement=current_user.departement
+        departement=course.departement,
+        domain=course.domain,
+        external_links=course.external_links,
+        quiz_link=course.quiz_link,
+        instructor_id=current_user.id
     )
     db.add(db_course)
     db.commit()
     db.refresh(db_course)
+    
+    # Handle file uploads
+    materials = []
+    
+    # Save course photo if provided
+    if course.course_photo:
+        photo_path = save_uploaded_file(course.course_photo, db_course.id)
+        photo_material = CourseMaterial(
+            course_id=db_course.id,
+            file_name=course.course_photo.filename,
+            file_path=photo_path,
+            file_type=course.course_photo.content_type,
+            file_category='photo'
+        )
+        materials.append(photo_material)
+    
+    # Save course material if provided
+    if course.course_material:
+        material_path = save_uploaded_file(course.course_material, db_course.id)
+        material = CourseMaterial(
+            course_id=db_course.id,
+            file_name=course.course_material.filename,
+            file_path=material_path,
+            file_type=course.course_material.content_type,
+            file_category='material'
+        )
+        materials.append(material)
+    
+    # Save course record if provided
+    if course.course_record:
+        record_path = save_uploaded_file(course.course_record, db_course.id)
+        record = CourseMaterial(
+            course_id=db_course.id,
+            file_name=course.course_record.filename,
+            file_path=record_path,
+            file_type=course.course_record.content_type,
+            file_category='record'
+        )
+        materials.append(record)
+    
+    # Add all materials to the database
+    if materials:
+        db.add_all(materials)
+        db.commit()
     
     # Notify admin about new course
     notify_course_created(db, db_course)
@@ -361,7 +411,8 @@ def get_courses(
     db: Session = Depends(get_db)
 ):
     courses = db.query(Course).options(
-        sqlalchemy.orm.joinedload(Course.instructor)
+        sqlalchemy.orm.joinedload(Course.instructor),
+        sqlalchemy.orm.joinedload(Course.materials)
     ).offset(skip).limit(limit).all()
     return courses
 
@@ -370,46 +421,13 @@ def get_course(
     course_id: int,
     db: Session = Depends(get_db)
 ):
-    course = db.query(Course).filter(Course.id == course_id).first()
+    course = db.query(Course).options(
+        sqlalchemy.orm.joinedload(Course.instructor),
+        sqlalchemy.orm.joinedload(Course.materials)
+    ).filter(Course.id == course_id).first()
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
     return course
-
-@app.post("/courses/{course_id}/materials/", response_model=CourseMaterialSchema)
-def upload_course_material(
-    course_id: int,
-    current_user: Annotated[User, Depends(verify_professor)],
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
-    # Verify course exists and user is the instructor
-    course = db.query(Course).filter(Course.id == course_id).first()
-    if course is None:
-        raise HTTPException(status_code=404, detail="Course not found")
-    if course.instructor_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only upload materials to your own courses"
-        )
-    
-    # Save the file
-    file_path = save_uploaded_file(file, course_id)
-    
-    # Create course material record
-    db_material = CourseMaterial(
-        course_id=course_id,
-        file_name=file.filename,
-        file_path=file_path,
-        file_type=file.content_type
-    )
-    db.add(db_material)
-    db.commit()
-    db.refresh(db_material)
-    
-    # Notify admin and students about new material
-    notify_material_added(db, course, db_material)
-    
-    return db_material
 
 @app.get("/courses/{course_id}/materials/", response_model=List[CourseMaterialSchema])
 def get_course_materials(
@@ -419,7 +437,14 @@ def get_course_materials(
     course = db.query(Course).filter(Course.id == course_id).first()
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
-    return course.materials
+    
+    # Ensure file_category is a string for all materials
+    materials = course.materials
+    for material in materials:
+        if material.file_category is None:
+            material.file_category = "material"  # Default category if none is set
+    
+    return materials
 
 @app.post("/courses/{course_id}/enroll")
 async def enroll_in_course(
@@ -672,10 +697,10 @@ async def employer_dashboard(
         ]
     }
 
-@app.put("/courses/{course_id}")
+@app.put("/courses/{course_id}", response_model=CourseSchema)
 def update_course(
     course_id: int,
-    course: CourseCreate,
+    course_update: CourseBase,
     current_user: Annotated[User, Depends(verify_professor)],
     db: Session = Depends(get_db)
 ):
@@ -692,8 +717,9 @@ def update_course(
         )
     
     # Update course details
-    db_course.title = course.title
-    db_course.description = course.description
+    for field, value in course_update.dict(exclude_unset=True).items():
+        setattr(db_course, field, value)
+    
     db_course.updated_at = datetime.utcnow()
     
     db.commit()

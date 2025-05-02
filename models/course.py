@@ -11,6 +11,9 @@ class Course(Base):
     description = Column(Text)
     instructor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     departement = Column(String)
+    domain = Column(String)  # New field for course domain
+    external_links = Column(Text, nullable=True)  # New field for external links
+    quiz_link = Column(String, nullable=True)  # New field for quiz link
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -31,6 +34,7 @@ class CourseMaterial(Base):
     file_name = Column(String)
     file_path = Column(String)
     file_type = Column(String)
+    file_category = Column(String)  # New field to distinguish between photo, material, and record
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     
     course = relationship("Course", back_populates="materials")
