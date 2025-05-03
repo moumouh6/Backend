@@ -136,12 +136,12 @@ async def get_current_user(
         raise credentials_exception
     return user
 
-# Middleware to check if user is a professor
-def verify_professor(current_user: Annotated[User, Depends(get_current_user)]):
-    if current_user.role != "prof":
+# Middleware to check if user is a professor or admin
+def verify_professor_or_admin(current_user: Annotated[User, Depends(get_current_user)]):
+    if current_user.role not in ["prof", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only professors can perform this action"
+            detail="Only professors and administrators can perform this action"
         )
     return current_user
 
@@ -336,19 +336,27 @@ async def read_users_me(
 # Course endpoints
 @app.post("/courses/", response_model=CourseSchema)
 async def create_course(
-    current_user: Annotated[User, Depends(verify_professor)],
-    course: CourseCreate,
+    current_user: Annotated[User, Depends(verify_professor_or_admin)],
+    title: str = Form(...),
+    description: str = Form(...),
+    departement: str = Form(...),
+    domain: str = Form(...),
+    external_links: Optional[str] = Form(None),
+    quiz_link: Optional[str] = Form(None),
+    course_photo: Optional[UploadFile] = None,
+    course_material: Optional[UploadFile] = None,
+    course_record: Optional[UploadFile] = None,
     db: Session = Depends(get_db)
 ):
     """Create a new course with all its materials in a single request"""
     # Create the course
     db_course = Course(
-        title=course.title,
-        description=course.description,
-        departement=course.departement,
-        domain=course.domain,
-        external_links=course.external_links,
-        quiz_link=course.quiz_link,
+        title=title,
+        description=description,
+        departement=departement,
+        domain=domain,
+        external_links=external_links,
+        quiz_link=quiz_link,
         instructor_id=current_user.id
     )
     db.add(db_course)
@@ -358,38 +366,38 @@ async def create_course(
     # Handle file uploads
     materials = []
     
-    # Save course photo if provided
-    if course.course_photo:
-        photo_path = save_uploaded_file(course.course_photo, db_course.id)
+    # Save course photo if provided and not empty
+    if course_photo and course_photo.filename:
+        photo_path = save_uploaded_file(course_photo, db_course.id)
         photo_material = CourseMaterial(
             course_id=db_course.id,
-            file_name=course.course_photo.filename,
+            file_name=course_photo.filename,
             file_path=photo_path,
-            file_type=course.course_photo.content_type,
+            file_type=course_photo.content_type,
             file_category='photo'
         )
         materials.append(photo_material)
     
-    # Save course material if provided
-    if course.course_material:
-        material_path = save_uploaded_file(course.course_material, db_course.id)
+    # Save course material if provided and not empty
+    if course_material and course_material.filename:
+        material_path = save_uploaded_file(course_material, db_course.id)
         material = CourseMaterial(
             course_id=db_course.id,
-            file_name=course.course_material.filename,
+            file_name=course_material.filename,
             file_path=material_path,
-            file_type=course.course_material.content_type,
+            file_type=course_material.content_type,
             file_category='material'
         )
         materials.append(material)
     
-    # Save course record if provided
-    if course.course_record:
-        record_path = save_uploaded_file(course.course_record, db_course.id)
+    # Save course record if provided and not empty
+    if course_record and course_record.filename:
+        record_path = save_uploaded_file(course_record, db_course.id)
         record = CourseMaterial(
             course_id=db_course.id,
-            file_name=course.course_record.filename,
+            file_name=course_record.filename,
             file_path=record_path,
-            file_type=course.course_record.content_type,
+            file_type=course_record.content_type,
             file_category='record'
         )
         materials.append(record)
@@ -406,14 +414,48 @@ async def create_course(
 
 @app.get("/courses/", response_model=List[CourseSchema])
 def get_courses(
+    current_user: Annotated[User, Depends(get_current_user)],
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    courses = db.query(Course).options(
+    # Base query
+    query = db.query(Course).options(
         sqlalchemy.orm.joinedload(Course.instructor),
         sqlalchemy.orm.joinedload(Course.materials)
-    ).offset(skip).limit(limit).all()
+    )
+    
+    # Si l'utilisateur est un employer, filtrer par département
+    if current_user.role == "employer":
+        query = query.filter(Course.departement == current_user.departement)
+    
+    # Appliquer la pagination
+    courses = query.offset(skip).limit(limit).all()
+    
+    # Assurer que tous les champs requis ont des valeurs par défaut
+    for course in courses:
+        if course.domain is None:
+            course.domain = ""
+        if course.departement is None:
+            course.departement = ""
+        if course.description is None:
+            course.description = ""
+        if course.external_links is None:
+            course.external_links = ""
+        if course.quiz_link is None:
+            course.quiz_link = ""
+            
+        # Gérer les matériaux
+        for material in course.materials:
+            if material.file_category is None:
+                material.file_category = "material"
+            if material.file_name is None:
+                material.file_name = ""
+            if material.file_type is None:
+                material.file_type = ""
+            if material.file_path is None:
+                material.file_path = ""
+    
     return courses
 
 @app.get("/courses/{course_id}", response_model=CourseSchema)
@@ -701,7 +743,7 @@ async def employer_dashboard(
 def update_course(
     course_id: int,
     course_update: CourseBase,
-    current_user: Annotated[User, Depends(verify_professor)],
+    current_user: Annotated[User, Depends(verify_professor_or_admin)],
     db: Session = Depends(get_db)
 ):
     # Get existing course
@@ -729,7 +771,7 @@ def update_course(
 @app.delete("/courses/{course_id}")
 def delete_course(
     course_id: int,
-    current_user: Annotated[User, Depends(verify_professor)],
+    current_user: Annotated[User, Depends(verify_professor_or_admin)],
     db: Session = Depends(get_db)
 ):
     # Get existing course
@@ -756,7 +798,7 @@ def delete_course(
 def delete_course_material(
     course_id: int,
     material_id: int,
-    current_user: Annotated[User, Depends(verify_professor)],
+    current_user: Annotated[User, Depends(verify_professor_or_admin)],
     db: Session = Depends(get_db)
 ):
     # Get the material and verify it belongs to the specified course
