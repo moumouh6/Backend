@@ -75,6 +75,8 @@ class Course(CourseBase):
     created_at: datetime
     updated_at: datetime
     materials: List[CourseMaterial] = []
+    instructor: dict  # Pour les informations du professeur
+    image_url: Optional[str] = None  # URL de l'image du cours
 
     class Config:
         from_attributes = True

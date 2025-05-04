@@ -432,31 +432,51 @@ def get_courses(
     # Appliquer la pagination
     courses = query.offset(skip).limit(limit).all()
     
-    # Assurer que tous les champs requis ont des valeurs par défaut
+    # Préparer la réponse avec les informations supplémentaires
+    course_list = []
     for course in courses:
-        if course.domain is None:
-            course.domain = ""
-        if course.departement is None:
-            course.departement = ""
-        if course.description is None:
-            course.description = ""
-        if course.external_links is None:
-            course.external_links = ""
-        if course.quiz_link is None:
-            course.quiz_link = ""
-            
-        # Gérer les matériaux
-        for material in course.materials:
-            if material.file_category is None:
-                material.file_category = "material"
-            if material.file_name is None:
-                material.file_name = ""
-            if material.file_type is None:
-                material.file_type = ""
-            if material.file_path is None:
-                material.file_path = ""
+        # Trouver l'image du cours
+        course_image = next(
+            (material for material in course.materials if material.file_category == 'photo'),
+            None
+        )
+        
+        # Créer le dictionnaire de cours avec les informations supplémentaires
+        course_dict = {
+            "id": course.id,
+            "title": course.title,
+            "description": course.description or "",
+            "departement": course.departement,
+            "domain": course.domain or "",
+            "external_links": course.external_links or "",
+            "quiz_link": course.quiz_link or "",
+            "instructor_id": course.instructor_id,
+            "created_at": course.created_at,
+            "updated_at": course.updated_at,
+            "instructor": {
+                "id": course.instructor.id,
+                "nom": course.instructor.nom,
+                "prenom": course.instructor.prenom,
+                "email": course.instructor.email,
+                "departement": course.instructor.departement
+            },
+            "materials": [
+                {
+                    "id": material.id,
+                    "course_id": material.course_id,
+                    "file_name": material.file_name,
+                    "file_type": material.file_type,
+                    "file_category": material.file_category or "material",
+                    "file_path": material.file_path,
+                    "uploaded_at": material.uploaded_at
+                }
+                for material in course.materials
+            ],
+            "image_url": f"/courses/{course.id}/image" if course_image else None
+        }
+        course_list.append(course_dict)
     
-    return courses
+    return course_list
 
 @app.get("/courses/{course_id}", response_model=CourseSchema)
 def get_course(
