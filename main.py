@@ -478,6 +478,63 @@ def get_courses(
     
     return course_list
 
+@app.get("/courses/by-department", response_model=List[CourseSchema])
+def get_courses_by_department(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retourne les cours du département de l'utilisateur connecté.
+    """
+    if not current_user.departement:
+        raise HTTPException(status_code=400, detail="Département non défini pour cet utilisateur.")
+    courses = db.query(Course).options(
+        sqlalchemy.orm.joinedload(Course.instructor),
+        sqlalchemy.orm.joinedload(Course.materials)
+    ).filter(Course.departement == current_user.departement).all()
+
+    course_list = []
+    for course in courses:
+        course_image = next(
+            (material for material in course.materials if material.file_category == 'photo'),
+            None
+        )
+        course_dict = {
+            "id": course.id,
+            "title": course.title,
+            "description": course.description or "",
+            "departement": course.departement,
+            "domain": course.domain or "",
+            "external_links": course.external_links or "",
+            "quiz_link": course.quiz_link or "",
+            "instructor_id": course.instructor_id,
+            "created_at": course.created_at,
+            "updated_at": course.updated_at,
+            "instructor": {
+                "id": course.instructor.id,
+                "nom": course.instructor.nom,
+                "prenom": course.instructor.prenom,
+                "email": course.instructor.email,
+                "departement": course.instructor.departement
+            },
+            "materials": [
+                {
+                    "id": material.id,
+                    "course_id": material.course_id,
+                    "file_name": material.file_name,
+                    "file_type": material.file_type,
+                    "file_category": material.file_category or "material",
+                    "file_path": material.file_path,
+                    "uploaded_at": material.uploaded_at
+                }
+                for material in course.materials
+            ],
+            "image_url": f"/courses/{course.id}/image" if course_image else None
+        }
+        course_list.append(course_dict)
+
+    return course_list
+
 @app.get("/courses/{course_id}", response_model=CourseSchema)
 def get_course(
     course_id: int,
