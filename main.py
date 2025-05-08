@@ -343,74 +343,130 @@ async def create_course(
     domain: str = Form(...),
     external_links: Optional[str] = Form(None),
     quiz_link: Optional[str] = Form(None),
-    course_photo: Optional[UploadFile] = None,
-    course_material: Optional[UploadFile] = None,
-    course_record: Optional[UploadFile] = None,
+    course_photo: Optional[UploadFile] = File(default=None),
+    course_material: Optional[UploadFile] = File(default=None),
+    course_record: Optional[UploadFile] = File(default=None),
     db: Session = Depends(get_db)
 ):
     """Create a new course with all its materials in a single request"""
-    # Create the course
-    db_course = Course(
-        title=title,
-        description=description,
-        departement=departement,
-        domain=domain,
-        external_links=external_links,
-        quiz_link=quiz_link,
-        instructor_id=current_user.id
-    )
-    db.add(db_course)
-    db.commit()
-    db.refresh(db_course)
-    
-    # Handle file uploads
-    materials = []
-    
-    # Save course photo if provided and not empty
-    if course_photo and course_photo.filename:
-        photo_path = save_uploaded_file(course_photo, db_course.id)
-        photo_material = CourseMaterial(
-            course_id=db_course.id,
-            file_name=course_photo.filename,
-            file_path=photo_path,
-            file_type=course_photo.content_type,
-            file_category='photo'
+    try:
+        # Create the course
+        db_course = Course(
+            title=title,
+            description=description,
+            departement=departement,
+            domain=domain,
+            external_links=external_links,
+            quiz_link=quiz_link,
+            instructor_id=current_user.id
         )
-        materials.append(photo_material)
-    
-    # Save course material if provided and not empty
-    if course_material and course_material.filename:
-        material_path = save_uploaded_file(course_material, db_course.id)
-        material = CourseMaterial(
-            course_id=db_course.id,
-            file_name=course_material.filename,
-            file_path=material_path,
-            file_type=course_material.content_type,
-            file_category='material'
-        )
-        materials.append(material)
-    
-    # Save course record if provided and not empty
-    if course_record and course_record.filename:
-        record_path = save_uploaded_file(course_record, db_course.id)
-        record = CourseMaterial(
-            course_id=db_course.id,
-            file_name=course_record.filename,
-            file_path=record_path,
-            file_type=course_record.content_type,
-            file_category='record'
-        )
-        materials.append(record)
-    
-    # Add all materials to the database
-    if materials:
-        db.add_all(materials)
+        db.add(db_course)
         db.commit()
-    
-    # Notify admin about new course
-    notify_course_created(db, db_course)
-    
-    return db_course
+        db.refresh(db_course)
+        
+        # Handle file uploads
+        materials = []
+        
+        # Helper function to validate file
+        def is_valid_file(file: Optional[UploadFile]) -> bool:
+            if not file:
+                return False
+            if not file.filename:
+                return False
+            if not file.filename.strip():
+                return False
+            if file.content_type is None:
+                return False
+            return True
+        
+        # Save course photo if provided and valid
+        if is_valid_file(course_photo):
+            photo_path = save_uploaded_file(course_photo, db_course.id)
+            photo_material = CourseMaterial(
+                course_id=db_course.id,
+                file_name=course_photo.filename,
+                file_path=photo_path,
+                file_type=course_photo.content_type,
+                file_category='photo'
+            )
+            materials.append(photo_material)
+        
+        # Save course material if provided and valid
+        if is_valid_file(course_material):
+            material_path = save_uploaded_file(course_material, db_course.id)
+            material = CourseMaterial(
+                course_id=db_course.id,
+                file_name=course_material.filename,
+                file_path=material_path,
+                file_type=course_material.content_type,
+                file_category='material'
+            )
+            materials.append(material)
+        
+        # Save course record if provided and valid
+        if is_valid_file(course_record):
+            record_path = save_uploaded_file(course_record, db_course.id)
+            record = CourseMaterial(
+                course_id=db_course.id,
+                file_name=course_record.filename,
+                file_path=record_path,
+                file_type=course_record.content_type,
+                file_category='record'
+            )
+            materials.append(record)
+        
+        # Add all materials to the database
+        if materials:
+            db.add_all(materials)
+            db.commit()
+        
+        # Notify admin about new course
+        notify_course_created(db, db_course)
+        
+        # Convert instructor to dictionary for response
+        instructor_dict = {
+            "id": current_user.id,
+            "nom": current_user.nom,
+            "prenom": current_user.prenom,
+            "email": current_user.email,
+            "departement": current_user.departement
+        }
+        
+        # Prepare response
+        response = {
+            "id": db_course.id,
+            "title": db_course.title,
+            "description": db_course.description,
+            "departement": db_course.departement,
+            "domain": db_course.domain,
+            "external_links": db_course.external_links,
+            "quiz_link": db_course.quiz_link,
+            "instructor_id": db_course.instructor_id,
+            "created_at": db_course.created_at,
+            "updated_at": db_course.updated_at,
+            "instructor": instructor_dict,
+            "materials": [
+                {
+                    "id": material.id,
+                    "course_id": material.course_id,
+                    "file_name": material.file_name,
+                    "file_type": material.file_type,
+                    "file_category": material.file_category,
+                    "file_path": material.file_path,
+                    "uploaded_at": material.uploaded_at
+                }
+                for material in materials
+            ]
+        }
+        
+        return response
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 @app.get("/courses/", response_model=List[CourseSchema])
 def get_courses(
@@ -441,6 +497,15 @@ def get_courses(
             None
         )
         
+        # Convert instructor to dictionary
+        instructor_dict = {
+            "id": course.instructor.id,
+            "nom": course.instructor.nom,
+            "prenom": course.instructor.prenom,
+            "email": course.instructor.email,
+            "departement": course.instructor.departement
+        } if course.instructor else None
+        
         # Créer le dictionnaire de cours avec les informations supplémentaires
         course_dict = {
             "id": course.id,
@@ -453,13 +518,7 @@ def get_courses(
             "instructor_id": course.instructor_id,
             "created_at": course.created_at,
             "updated_at": course.updated_at,
-            "instructor": {
-                "id": course.instructor.id,
-                "nom": course.instructor.nom,
-                "prenom": course.instructor.prenom,
-                "email": course.instructor.email,
-                "departement": course.instructor.departement
-            },
+            "instructor": instructor_dict,
             "materials": [
                 {
                     "id": material.id,
@@ -499,6 +558,16 @@ def get_courses_by_department(
             (material for material in course.materials if material.file_category == 'photo'),
             None
         )
+        
+        # Convert instructor to dictionary
+        instructor_dict = {
+            "id": course.instructor.id,
+            "nom": course.instructor.nom,
+            "prenom": course.instructor.prenom,
+            "email": course.instructor.email,
+            "departement": course.instructor.departement
+        } if course.instructor else None
+        
         course_dict = {
             "id": course.id,
             "title": course.title,
@@ -510,13 +579,7 @@ def get_courses_by_department(
             "instructor_id": course.instructor_id,
             "created_at": course.created_at,
             "updated_at": course.updated_at,
-            "instructor": {
-                "id": course.instructor.id,
-                "nom": course.instructor.nom,
-                "prenom": course.instructor.prenom,
-                "email": course.instructor.email,
-                "departement": course.instructor.departement
-            },
+            "instructor": instructor_dict,
             "materials": [
                 {
                     "id": material.id,
