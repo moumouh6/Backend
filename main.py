@@ -765,12 +765,14 @@ async def prof_dashboard(
             "id": course.id,
             "title": course.title,
             "description": course.description,
+            "departement": course.departement,
             "created_at": course.created_at.isoformat() if course.created_at else None,
             "materials": [
                 {
                     "id": material.id,
                     "file_name": material.file_name,
                     "file_type": material.file_type,
+                    "file_category": material.file_category,
                     "uploaded_at": material.uploaded_at.isoformat() if material.uploaded_at else None
                 }
                 for material in course.materials
