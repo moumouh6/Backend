@@ -776,33 +776,29 @@ async def admin_dashboard(
             detail="Access denied. admin role required."
         )
     
-    # Get statistics for admin dashboard
-    total_users = db.query(User).count()
-    pending_users = db.query(User).filter(User.is_approved == False).count()
-    active_users = db.query(User).filter(User.is_active == True).count()
+    # Get all courses
+    courses = db.query(Course).filter(Course.instructor_id == current_user.id).all()
     
-    # Get pending users details
-    pending_users_list = db.query(User).filter(User.is_approved == False).all()
-    
-    return {
-        "statistics": {
-            "total_users": total_users,
-            "pending_users": pending_users,
-            "active_users": active_users
-        },
-        "pending_users": [
-            {
-                "id": user.id,
-                "nom": user.nom,
-                "prenom": user.prenom,
-                "email": user.email,
-                "departement": user.departement,
-                "role": user.role,
-                "created_at": user.created_at.isoformat() if user.created_at else None
-            }
-            for user in pending_users_list
-        ]
-    }
+    return [
+        {
+            "id": course.id,
+            "title": course.title,
+            "description": course.description,
+            "departement": course.departement,
+            "created_at": course.created_at.isoformat() if course.created_at else None,
+            "materials": [
+                {
+                    "id": material.id,
+                    "file_name": material.file_name,
+                    "file_type": material.file_type,
+                    "file_category": material.file_category,
+                    "uploaded_at": material.uploaded_at.isoformat() if material.uploaded_at else None
+                }
+                for material in course.materials
+            ]
+        }
+        for course in courses
+    ]
 
 @app.get("/dashboard/prof")
 async def prof_dashboard(
