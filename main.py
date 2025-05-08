@@ -757,35 +757,27 @@ async def prof_dashboard(
             detail="Access denied. professor role required."
         )
     
-    # Get professor's courses and materials
+    # Get professor's courses
     courses = db.query(Course).filter(Course.instructor_id == current_user.id).all()
     
-    return {
-        "user_info": {
-            "nom": current_user.nom,
-            "prenom": current_user.prenom,
-            "email": current_user.email,
-            "departement": current_user.departement
-        },
-        "courses": [
-            {
-                "id": course.id,
-                "title": course.title,
-                "description": course.description,
-                "created_at": course.created_at.isoformat() if course.created_at else None,
-                "materials": [
-                    {
-                        "id": material.id,
-                        "file_name": material.file_name,
-                        "file_type": material.file_type,
-                        "uploaded_at": material.uploaded_at.isoformat() if material.uploaded_at else None
-                    }
-                    for material in course.materials
-                ]
-            }
-            for course in courses
-        ]
-    }
+    return [
+        {
+            "id": course.id,
+            "title": course.title,
+            "description": course.description,
+            "created_at": course.created_at.isoformat() if course.created_at else None,
+            "materials": [
+                {
+                    "id": material.id,
+                    "file_name": material.file_name,
+                    "file_type": material.file_type,
+                    "uploaded_at": material.uploaded_at.isoformat() if material.uploaded_at else None
+                }
+                for material in course.materials
+            ]
+        }
+        for course in courses
+    ]
 
 @app.get("/dashboard/employer")
 async def employer_dashboard(
