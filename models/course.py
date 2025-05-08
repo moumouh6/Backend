@@ -11,7 +11,6 @@ class Course(Base):
     description = Column(Text)
     instructor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     departement = Column(String)
-    domain = Column(String)  # New field for course domain
     external_links = Column(Text, nullable=True)  # New field for external links
     quiz_link = Column(String, nullable=True)  # New field for quiz link
     created_at = Column(DateTime, default=datetime.utcnow)

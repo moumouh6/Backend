@@ -43,7 +43,6 @@ class CourseBase(BaseModel):
     title: str  # Nom du cours
     description: str  # Description
     departement: str  # Département
-    domain: str  # Domaine
     external_links: Optional[str] = None  # Liens externes
     quiz_link: Optional[str] = None  # Lien du quiz
 
