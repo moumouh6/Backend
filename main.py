@@ -1425,3 +1425,28 @@ def admin_update_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error occurred while updating user"
         )
+
+@app.delete("/conferences/{conference_name}")
+def delete_conference(
+    conference_name: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Delete a conference request"""
+    # Vérifier que l'utilisateur est le propriétaire de la conférence ou un admin
+    conference = db.query(ConferenceRequest).filter(
+        ConferenceRequest.name == conference_name,
+        ConferenceRequest.requested_by_id == current_user.id
+    ).first()
+
+    if not conference:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demande de formation non trouvée ou vous n'avez pas le droit de la supprimer"
+        )
+
+    # Supprimer la conférence
+    db.delete(conference)
+    db.commit()
+
+    return {"message": "Demande de formation supprimée avec succès"}
