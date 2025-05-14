@@ -10,7 +10,7 @@ import os
 import logging
 from fastapi.responses import FileResponse
 import sqlalchemy.orm
-
+from fastapi.staticfiles import StaticFiles
 from database import get_db, engine
 from models.user import User, Base
 from models.conference import ConferenceRequest 
@@ -25,6 +25,7 @@ from schemas import (
     UserPreferences, UserPreferencesUpdate, UserPersonalInfo, UserPersonalInfoUpdate,
     CourseBase
 )
+import shutil
 from auth import (
     verify_password,
     get_password_hash,
@@ -50,6 +51,11 @@ from services.message_service import (
     mark_message_as_read,
     delete_message
 )
+
+# Créer le dossier s’il n’existe pas
+os.makedirs("static/uploads", exist_ok=True)
+
+
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -101,6 +107,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Servir les fichiers statiques
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -335,135 +344,126 @@ async def read_users_me(
 
 # Course endpoints
 @app.post("/courses/", response_model=CourseSchema)
-async def create_course(
-    current_user: Annotated[User, Depends(verify_professor_or_admin)],
+def upload_course(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
     title: str = Form(...),
     description: str = Form(...),
     departement: str = Form(...),
-    external_links: Optional[str] = Form(None),
-    quiz_link: Optional[str] = Form(None),
-    course_photo: Optional[UploadFile] = File(default=None),
-    course_material: Optional[UploadFile] = File(default=None),
-    course_record: Optional[UploadFile] = File(default=None),
-    db: Session = Depends(get_db)
+    course_image: UploadFile = File(...),
+    course_pdf: UploadFile = File(...),
+    external_links: str = Form(None),
+    quiz_link: str = Form(None),
+    course_video: UploadFile = File(None)
 ):
-    """Create a new course with all its materials in a single request"""
-    try:
-        # Create the course
-        db_course = Course(
-            title=title,
-            description=description,
-            departement=departement,
-            external_links=external_links,
-            quiz_link=quiz_link,
-            instructor_id=current_user.id
+    upload_dir = "static/uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # 1. Créer le cours
+    course = Course(
+        title=title,
+        description=description,
+        instructor_id=current_user.id,  # Utiliser l'ID de l'utilisateur connecté
+        departement=departement,
+        external_links=external_links,
+        quiz_link=quiz_link,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(course)
+    db.commit()
+    db.refresh(course)
+
+    materials = []
+
+    # 2. Enregistrer l'image du cours
+    image_filename = f"{course.id}_image_{course_image.filename}"
+    image_path = os.path.join(upload_dir, image_filename)
+    with open(image_path, "wb") as buffer:
+        shutil.copyfileobj(course_image.file, buffer)
+
+    image_material = CourseMaterial(
+        course_id=course.id,
+        file_name=course_image.filename,
+        file_path=f"/static/uploads/{image_filename}",
+        file_type=course_image.content_type,
+        file_category="photo"
+    )
+    db.add(image_material)
+    materials.append(image_material)
+
+    # 3. Enregistrer le PDF
+    pdf_filename = f"{course.id}_material_{course_pdf.filename}"
+    pdf_path = os.path.join(upload_dir, pdf_filename)
+    with open(pdf_path, "wb") as buffer:
+        shutil.copyfileobj(course_pdf.file, buffer)
+
+    pdf_material = CourseMaterial(
+        course_id=course.id,
+        file_name=course_pdf.filename,
+        file_path=f"/static/uploads/{pdf_filename}",
+        file_type=course_pdf.content_type,
+        file_category="material"
+    )
+    db.add(pdf_material)
+    materials.append(pdf_material)
+
+    # 4. Enregistrer la vidéo (si fournie)
+    if course_video:
+        video_filename = f"{course.id}_record_{course_video.filename}"
+        video_path = os.path.join(upload_dir, video_filename)
+        with open(video_path, "wb") as buffer:
+            shutil.copyfileobj(course_video.file, buffer)
+
+        video_material = CourseMaterial(
+            course_id=course.id,
+            file_name=course_video.filename,
+            file_path=f"/static/uploads/{video_filename}",
+            file_type=course_video.content_type,
+            file_category="record"
         )
-        db.add(db_course)
-        db.commit()
-        db.refresh(db_course)
-        
-        # Handle file uploads
-        materials = []
-        
-        # Helper function to validate file
-        def is_valid_file(file: Optional[UploadFile]) -> bool:
-            if not file:
-                return False
-            if not file.filename:
-                return False
-            if not file.filename.strip():
-                return False
-            if file.content_type is None:
-                return False
-            return True
-        
-        # Save course photo if provided and valid
-        if is_valid_file(course_photo):
-            photo_path = save_uploaded_file(course_photo, db_course.id)
-            photo_material = CourseMaterial(
-                course_id=db_course.id,
-                file_name=course_photo.filename,
-                file_path=photo_path,
-                file_type=course_photo.content_type,
-                file_category='photo'
-            )
-            materials.append(photo_material)
-        
-        # Save course material if provided and valid
-        if is_valid_file(course_material):
-            material_path = save_uploaded_file(course_material, db_course.id)
-            material = CourseMaterial(
-                course_id=db_course.id,
-                file_name=course_material.filename,
-                file_path=material_path,
-                file_type=course_material.content_type,
-                file_category='material'
-            )
-            materials.append(material)
-        
-        # Save course record if provided and valid
-        if is_valid_file(course_record):
-            record_path = save_uploaded_file(course_record, db_course.id)
-            record = CourseMaterial(
-                course_id=db_course.id,
-                file_name=course_record.filename,
-                file_path=record_path,
-                file_type=course_record.content_type,
-                file_category='record'
-            )
-            materials.append(record)
-        
-        # Add all materials to the database
-        if materials:
-            db.add_all(materials)
-            db.commit()
-        
-        # Notify admin about new course
-        notify_course_created(db, db_course)
-        
-        # Convert instructor to dictionary for response
-        instructor_dict = {
-            "id": current_user.id,
-            "nom": current_user.nom,
-            "prenom": current_user.prenom,
-            "email": current_user.email,
-            "departement": current_user.departement
-        }
-        
-        # Prepare response
-        response = {
-            "id": db_course.id,
-            "title": db_course.title,
-            "description": db_course.description,
-            "departement": db_course.departement,
-            "external_links": db_course.external_links,
-            "quiz_link": db_course.quiz_link,
-            "instructor_id": db_course.instructor_id,
-            "created_at": db_course.created_at,
-            "updated_at": db_course.updated_at,
-            "instructor": instructor_dict,
-            "materials": [
-                {
-                    "id": material.id,
-                    "course_id": material.course_id,
-                    "file_name": material.file_name,
-                    "file_type": material.file_type,
-                    "file_category": material.file_category,
-                    "file_path": material.file_path,
-                    "uploaded_at": material.uploaded_at
-                }
-                for material in materials
-            ]
-        }
-        
-        return response
-        
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        db.add(video_material)
+        materials.append(video_material)
+
+    db.commit()
+
+    # 5. Utiliser les infos de l'utilisateur connecté (instructeur)
+    instructor_dict = {
+        "id": current_user.id,
+        "name": current_user.nom,
+        "prenom": current_user.prenom,
+        "email": current_user.email,
+        "departement": current_user.departement
+    }
+
+    # 6. Préparer la réponse complète
+    response = {
+        "id": course.id,
+        "title": course.title,
+        "description": course.description,
+        "departement": course.departement,
+        "external_links": course.external_links,
+        "quiz_link": course.quiz_link,
+        "instructor_id": course.instructor_id,
+        "created_at": course.created_at,
+        "updated_at": course.updated_at,
+        "instructor": instructor_dict,
+        "materials": [
+            {
+                "id": m.id,
+                "course_id": m.course_id,
+                "file_name": m.file_name,
+                "file_type": m.file_type,
+                "file_category": m.file_category,
+                "file_path": m.file_path,
+                "uploaded_at": m.uploaded_at
+            }
+            for m in materials
+        ]
+    }
+
+    return response
+
 
 @app.get("/courses/", response_model=List[CourseSchema])
 def get_courses(
@@ -604,24 +604,80 @@ def get_course(
     ).filter(Course.id == course_id).first()
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
-    return course
+    
+    # Trouver l'image du cours
+    course_image = next(
+        (material for material in course.materials if material.file_category == 'photo'),
+        None
+    )
+    
+    # Préparer le dictionnaire d'instructeur
+    instructor_dict = {
+        "id": course.instructor.id,
+        "nom": course.instructor.nom,
+        "prenom": course.instructor.prenom,
+        "email": course.instructor.email,
+        "departement": course.instructor.departement
+    } if course.instructor else None
+    
+    # Créer la réponse complète
+    response = {
+        "id": course.id,
+        "title": course.title,
+        "description": course.description,
+        "departement": course.departement,
+        "external_links": course.external_links or "",
+        "quiz_link": course.quiz_link or "",
+        "instructor_id": course.instructor_id,
+        "created_at": course.created_at,
+        "updated_at": course.updated_at,
+        "instructor": instructor_dict,
+        "materials": [
+            {
+                "id": material.id,
+                "course_id": material.course_id,
+                "file_name": material.file_name,
+                "file_type": material.file_type,
+                "file_category": material.file_category or "material",
+                "file_path": material.file_path,
+                "uploaded_at": material.uploaded_at
+            }
+            for material in course.materials
+        ],
+        "image_url": f"/courses/{course.id}/image" if course_image else None
+    }
+    
+    return response
 
 @app.get("/courses/{course_id}/materials/", response_model=List[CourseMaterialSchema])
 def get_course_materials(
     course_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
+    # Vérifier que le cours existe
     course = db.query(Course).filter(Course.id == course_id).first()
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # Ensure file_category is a string for all materials
+    # Récupérer les matériaux
     materials = course.materials
-    for material in materials:
-        if material.file_category is None:
-            material.file_category = "material"  # Default category if none is set
     
-    return materials
+    # Préparer la réponse
+    result = [
+        {
+            "id": material.id,
+            "course_id": material.course_id,
+            "file_name": material.file_name,
+            "file_path": material.file_path,
+            "file_type": material.file_type,
+            "file_category": material.file_category or "material",
+            "uploaded_at": material.uploaded_at
+        }
+        for material in materials
+    ]
+    
+    return result
 
 @app.post("/courses/{course_id}/enroll")
 async def enroll_in_course(
@@ -629,12 +685,14 @@ async def enroll_in_course(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
-    # Verify course exists
-    course = db.query(Course).filter(Course.id == course_id).first()
+    # Vérifier que le cours existe
+    course = db.query(Course).options(
+        sqlalchemy.orm.joinedload(Course.instructor)
+    ).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # Check if already enrolled
+    # Vérifier si déjà inscrit
     existing_progress = db.query(CourseProgress).filter(
         CourseProgress.user_id == current_user.id,
         CourseProgress.course_id == course_id
@@ -643,26 +701,45 @@ async def enroll_in_course(
     if existing_progress:
         raise HTTPException(status_code=400, detail="Already enrolled in this course")
     
-    # Create new progress record with enrollment date
+    # Créer un nouvel enregistrement de progression avec la date d'inscription
     progress = CourseProgress(
         user_id=current_user.id,
         course_id=course_id,
         start_date=datetime.utcnow(),
         status="En cours",
         progress=0,
-        is_completed=False
+        is_completed=False,
+        last_accessed=datetime.utcnow()
     )
-    
     db.add(progress)
     db.commit()
     db.refresh(progress)
-    
+
+    # Créer une notification
+    notification = Notification(
+        user_id=current_user.id,
+        title="Inscription à un cours",
+        message=f"Vous êtes maintenant inscrit au cours {course.title}",
+        type="course_enrollment",
+        related_course_id=course.id,
+        is_read=False,
+        created_at=datetime.utcnow()
+    )
+    db.add(notification)
+    db.commit()
+
+    # Préparer la réponse
     return {
-        "message": "Successfully enrolled in course",
-        "enrollment_details": {
-            "course_title": course.title,
-            "enrollment_date": progress.start_date.strftime("%d/%m/%Y"),
-            "status": progress.status
+        "success": True,
+        "message": f"Inscrit au cours {course.title}",
+        "course": {
+            "id": course.id,
+            "title": course.title,
+            "instructor": f"{course.instructor.nom} {course.instructor.prenom}" if course.instructor else "Unknown",
+            "departement": course.departement,
+            "start_date": progress.start_date,
+            "status": progress.status,
+            "progress": f"{progress.progress:.1f}%"
         }
     }
 
@@ -672,7 +749,15 @@ async def mark_course_as_completed(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
-    # Get progress record
+    # Vérifier que le cours existe
+    course = db.query(Course).options(
+        sqlalchemy.orm.joinedload(Course.instructor)
+    ).filter(Course.id == course_id).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Récupérer la progression
     progress = db.query(CourseProgress).filter(
         CourseProgress.user_id == current_user.id,
         CourseProgress.course_id == course_id
@@ -681,21 +766,42 @@ async def mark_course_as_completed(
     if not progress:
         raise HTTPException(status_code=404, detail="Not enrolled in this course")
     
-    # Mark course as completed
+    # Marquer le cours comme terminé
     progress.is_completed = True
     progress.status = "Terminé"
     progress.completion_date = datetime.utcnow()
     progress.progress = 100
+    progress.last_accessed = datetime.utcnow()
     
     db.commit()
     db.refresh(progress)
     
+    # Créer une notification
+    notification = Notification(
+        user_id=current_user.id,
+        title="Cours terminé",
+        message=f"Félicitations ! Vous avez terminé le cours {course.title}",
+        type="course_completion",
+        related_course_id=course.id,
+        is_read=False,
+        created_at=datetime.utcnow()
+    )
+    db.add(notification)
+    db.commit()
+    
     return {
-        "message": "Course marked as completed",
+        "success": True,
+        "message": "Cours marqué comme terminé",
+        "course": {
+            "id": course.id,
+            "title": course.title,
+            "instructor": f"{course.instructor.nom} {course.instructor.prenom}" if course.instructor else "Unknown"
+        },
         "completion_details": {
-            "course_title": progress.course.title,
             "completion_date": progress.completion_date.strftime("%d/%m/%Y"),
-            "total_duration": f"{(progress.completion_date - progress.start_date).days} jours"
+            "total_duration": f"{(progress.completion_date - progress.start_date).days} jours",
+            "progress": "100%",
+            "status": progress.status
         }
     }
 
@@ -705,6 +811,15 @@ async def get_course_progress(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
+    # Récupérer le cours et vérifier son existence
+    course = db.query(Course).options(
+        sqlalchemy.orm.joinedload(Course.instructor)
+    ).filter(Course.id == course_id).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Récupérer la progression
     progress = db.query(CourseProgress).filter(
         CourseProgress.user_id == current_user.id,
         CourseProgress.course_id == course_id
@@ -713,14 +828,27 @@ async def get_course_progress(
     if not progress:
         raise HTTPException(status_code=404, detail="Not enrolled in this course")
     
+    # Mettre à jour le dernier accès
+    progress.last_accessed = datetime.utcnow()
+    db.commit()
+    
+    # Préparer la réponse
     return {
-        "course_details": {
-            "title": progress.course.title,
+        "success": True,
+        "course_id": course.id,
+        "course_title": course.title,
+        "instructor": {
+            "id": course.instructor.id,
+            "name": f"{course.instructor.nom} {course.instructor.prenom}"
+        } if course.instructor else None,
+        "progress_details": {
             "enrollment_date": progress.start_date.strftime("%d/%m/%Y"),
             "last_accessed": progress.last_accessed.strftime("%d/%m/%Y %H:%M"),
             "completion_date": progress.completion_date.strftime("%d/%m/%Y") if progress.completion_date else None,
-            "progress": f"{progress.progress:.1f}%",
+            "progress_value": progress.progress,
+            "progress_percent": f"{progress.progress:.1f}%",
             "status": progress.status,
+            "is_completed": progress.is_completed,
             "duration": f"{(datetime.utcnow() - progress.start_date).days} jours"
         }
     }
