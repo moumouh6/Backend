@@ -140,10 +140,8 @@ Backend-main/
    POSTGRES_USER=votre_utilisateur
    POSTGRES_PASSWORD=votre_mot_de_passe
    POSTGRES_HOST=votre_hote
-   POSTGRES_PORT=5432
+   POSTGRES_PORT=votre_port
    POSTGRES_DB=votre_base_de_donnees
-   DEFAULT_ADMIN_EMAIL=admin@gig.dz
-   DEFAULT_ADMIN_PASSWORD=admin123
    SECRET_KEY=votre_cle_secrete
    ```
 5. Initialiser la base de données:
