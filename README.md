@@ -1,208 +1,156 @@
-<<<<<<< HEAD
-# GIG Algeria E-Learning Platform
+# GIG PLATLEARN - Backend API
 
-A comprehensive e-learning platform for GIG Algeria, designed to manage courses, training materials, and employee progress. Built with FastAPI, SQLAlchemy, and modern web technologies.
+## Introduction
 
-## Features
+GIG PLATLEARN Backend est une API RESTful développée pour Gulf Insurance Group (GIG) Algérie, conçue pour gérer une plateforme d'apprentissage en ligne. Cette API fournit les fonctionnalités nécessaires pour la gestion des utilisateurs, des cours, des communications, et le suivi des progrès des employés.
 
-### User Management
-- Role-based access control (Admin, Professor, Employer)
-- User registration and approval system
-- Secure authentication with JWT tokens
-- Profile management
+## Technologies utilisées
 
-### Course Management
-- Create, read, update, and delete training courses
-- Role-based course access:
-  - Admins: Full access to all courses
-  - Professors: Access to their own courses and departmental courses
-  - Employers: Access to departmental courses only
-- Training materials upload and management
-- Course progress tracking
+- **Framework**: FastAPI
+- **Base de données**: PostgreSQL (hébergée sur Render)
+- **ORM**: SQLAlchemy
+- **Authentification**: JWT (JSON Web Tokens)
+- **Hachage de mot de passe**: bcrypt
+- **Stockage de fichiers**: Système de fichiers local
+
+## Fonctionnalités principales
+
+### Gestion des utilisateurs
+- Contrôle d'accès basé sur les rôles (Admin, Professeur, Employé)
+- Système d'inscription et d'approbation des utilisateurs
+- Authentification sécurisée avec tokens JWT
+- Gestion de profil et préférences utilisateur
+
+### Gestion des cours
+- Création, lecture, mise à jour et suppression des cours de formation
+- Accès aux cours basé sur les rôles:
+  - Admins: Accès complet à tous les cours
+  - Professeurs: Accès à leurs propres cours et aux cours départementaux
+  - Employés: Accès uniquement aux cours de leur département
+- Gestion des supports de formation (PDF, vidéos, liens externes)
+- Suivi des progrès des cours
+
+### Système de communication
+- Messagerie interne avec pièces jointes
+- Système de notifications pour:
+  - Création de nouveaux cours
+  - Mises à jour des supports de formation
+  - Suivi des progrès des cours
+  - Suppression de cours
+
+### Conférences et événements
+- Planification et gestion des conférences
+- Approbation des demandes de conférence
+- Calendrier des événements
+
+### Tableaux de bord
+- Tableaux de bord spécifiques aux rôles:
+  - Tableau de bord Admin: Gestion des utilisateurs, vue d'ensemble du système
+  - Tableau de bord Professeur: Gestion des cours, suivi des progrès des employés
+  - Tableau de bord Employé: Navigation dans les cours, suivi personnel
+
+## Architecture du projet
+
+```
+Backend-main/
+├── models/                # Modèles de données SQLAlchemy
+│   ├── user.py            # Modèle Utilisateur
+│   ├── course.py          # Modèles Cours et Matériels
+│   ├── notification.py    # Modèle Notification
+│   ├── message.py         # Modèle Message
+│   └── conference.py      # Modèle Conférence
+├── schemas/               # Schémas Pydantic pour la validation
+├── services/              # Services métier
+│   ├── notification_service.py  # Service de notifications
+│   └── message_service.py       # Service de messagerie
+├── static/                # Fichiers statiques
+│   └── uploads/           # Fichiers téléchargés (cours, pièces jointes)
+├── main.py                # Point d'entrée principal de l'application
+├── database.py            # Configuration de la base de données
+├── auth.py                # Fonctions d'authentification
+└── utils.py               # Utilitaires divers
+```
+
+## Points d'API principaux
+
+### Authentification
+- `POST /register` - Inscription d'un nouvel utilisateur
+- `POST /token` - Connexion et obtention du token d'accès
+- `GET /users/me` - Obtenir le profil de l'utilisateur actuel
+
+### Administration
+- `GET /admin/pending-users` - Voir les demandes d'approbation d'utilisateurs
+- `POST /admin/approve-user/{user_id}` - Approuver/rejeter les utilisateurs
+- `DELETE /admin/users/{user_id}` - Supprimer des utilisateurs
+- `PUT /admin/users/{user_id}` - Mettre à jour les informations d'un utilisateur
+
+### Gestion des cours
+- `POST /courses/` - Créer un nouveau cours (téléchargement de fichiers)
+- `GET /courses/` - Lister les cours (filtré par rôle)
+- `GET /courses/department` - Obtenir les cours par département
+- `GET /courses/{course_id}` - Obtenir les détails d'un cours
+- `PUT /courses/{course_id}` - Mettre à jour un cours
+- `DELETE /courses/{course_id}` - Supprimer un cours
+- `GET /courses/{course_id}/materials` - Lister les supports de cours
+- `POST /courses/{course_id}/enroll` - S'inscrire à un cours
+- `PUT /courses/{course_id}/complete` - Marquer un cours comme terminé
+- `GET /courses/{course_id}/progress` - Obtenir la progression d'un cours
+- `PUT /courses/{course_id}/progress` - Mettre à jour la progression d'un cours
 
 ### Communication
-- Internal messaging system
-- File attachments in messages
-- Notification system for:
-  - New course creation
-  - Training material updates
-  - Course progress updates
-  - Course deletion
+- `GET /notifications/` - Obtenir les notifications de l'utilisateur
+- `PUT /notifications/{notification_id}/read` - Marquer une notification comme lue
+- `POST /messages/` - Envoyer un message (avec pièce jointe possible)
+- `GET /messages/` - Obtenir les messages (reçus/envoyés)
+- `GET /messages/{message_id}` - Obtenir les détails d'un message
+- `PUT /messages/{message_id}/read` - Marquer un message comme lu
+- `DELETE /messages/{message_id}` - Supprimer un message
+- `GET /messages/file/{message_id}` - Télécharger une pièce jointe
 
-### Dashboard
-- Role-specific dashboards:
-  - Admin Dashboard: User management, system overview
-  - Professor Dashboard: Course management, employee progress
-  - Employer Dashboard: Course browsing, employee tracking
+### Conférences
+- `POST /conferences/request` - Demander une conférence
+- `PUT /conferences/{conf_id}/approve` - Approuver une demande de conférence
+- `GET /conferences/pending` - Obtenir les demandes de conférence en attente
+- `GET /conferences/professor` - Obtenir les conférences d'un professeur
+- `GET /calendar` - Obtenir le calendrier des événements
+- `DELETE /conferences/{conference_name}` - Supprimer une conférence
 
-## API Endpoints
+### Tableaux de bord
+- `GET /dashboard/admin` - Tableau de bord administrateur
+- `GET /dashboard/prof` - Tableau de bord professeur
+- `GET /dashboard/employer` - Tableau de bord employé
 
-### Authentication
-- `POST /register` - Register a new user
-- `POST /token` - Login and get access token
-- `GET /users/me` - Get current user profile
+## Configuration et installation
 
-### Admin Endpoints
-- `GET /admin/pending-users` - View pending user approvals
-- `POST /admin/approve-user/{user_id}` - Approve/reject users
-- `DELETE /admin/users/{user_id}` - Delete users
-
-### Course Endpoints
-- `GET /courses/` - List courses (filtered by role)
-- `GET /courses/{course_id}` - Get course details
-- `POST /courses/` - Create new course (professors only)
-- `PUT /courses/{course_id}` - Update course
-- `DELETE /courses/{course_id}` - Delete course
-- `POST /courses/{course_id}/materials/` - Upload training material
-- `GET /courses/{course_id}/materials/` - List course materials
-- `POST /courses/{course_id}/enroll` - Enroll in a course
-- `PUT /courses/{course_id}/complete` - Mark course as completed
-- `GET /courses/{course_id}/progress` - Get course progress
-- `PUT /courses/{course_id}/progress` - Update course progress
-
-### Communication Endpoints
-- `GET /notifications/` - Get user notifications
-- `PUT /notifications/{notification_id}/read` - Mark notification as read
-- `POST /messages/` - Send message
-- `GET /messages/` - Get messages (received/sent)
-- `GET /messages/{message_id}` - Get message details
-- `PUT /messages/{message_id}/read` - Mark message as read
-- `DELETE /messages/{message_id}` - Delete message
-- `GET /messages/file/{message_id}` - Download message attachment
-
-### Dashboard Endpoints
-- `GET /dashboard/admin` - Admin dashboard
-- `GET /dashboard/prof` - Professor dashboard
-- `GET /dashboard/employer` - Employer dashboard
-
-## Database Schema
-
-### Users
-- id (Primary Key)
-- nom
-- prenom
-- departement
-- role (admin/prof/employer)
-- email
-- telephone
-- hashed_password
-- is_active
-- is_approved
-- created_at
-
-### Courses
-- id (Primary Key)
-- title
-- description
-- instructor_id (Foreign Key)
-- departement
-- created_at
-- updated_at
-
-### Course Materials
-- id (Primary Key)
-- course_id (Foreign Key)
-- file_name
-- file_path
-- file_type
-- uploaded_at
-
-### Course Progress
-- id (Primary Key)
-- user_id (Foreign Key)
-- course_id (Foreign Key)
-- progress
-- status
-- start_date
-- completion_date
-- last_accessed
-- is_completed
-
-### Notifications
-- id (Primary Key)
-- user_id (Foreign Key)
-- title
-- message
-- type
-- is_read
-- created_at
-- related_course_id
-- related_material_id
-
-### Messages
-- id (Primary Key)
-- sender_id (Foreign Key)
-- receiver_id (Foreign Key)
-- content
-- file_path
-- file_type
-- is_read
-- created_at
-
-## Setup and Installation
-
-1. Clone the repository
-2. Create a virtual environment:
+1. Cloner le dépôt
+2. Créer un environnement virtuel:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   # Sur Linux/macOS:
+   source venv/bin/activate
+   # Sur Windows:
+   venv\Scripts\activate
    ```
-3. Install dependencies:
+3. Installer les dépendances:
    ```bash
    pip install -r requirements.txt
    ```
-4. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
+4. Configurer les variables d'environnement dans un fichier `.env`:
    ```
-5. Initialize the database:
+   POSTGRES_USER=votre_utilisateur
+   POSTGRES_PASSWORD=votre_mot_de_passe
+   POSTGRES_HOST=votre_hote
+   POSTGRES_PORT=5432
+   POSTGRES_DB=votre_base_de_donnees
+   DEFAULT_ADMIN_EMAIL=admin@gig.dz
+   DEFAULT_ADMIN_PASSWORD=admin123
+   SECRET_KEY=votre_cle_secrete
+   ```
+5. Initialiser la base de données:
    ```bash
    python init_db.py
    ```
-6. Run the application:
+6. Lancer l'application:
    ```bash
    uvicorn main:app --reload
-   ```
-
-## Security Features
-
-- JWT-based authentication
-- Password hashing with bcrypt
-- Role-based access control
-- File upload security
-- Input validation
-- SQL injection prevention
-- XSS protection
-
-## Error Handling
-
-The application includes comprehensive error handling for:
-- Authentication failures
-- Authorization violations
-- Invalid inputs
-- Database errors
-- File operations
-- API rate limiting
-
-## Testing
-
-To run tests:
-```bash
-pytest
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details. 
-=======
-# Backend
->>>>>>> 6d63cb99e3ec219ff758fe138051583e2e26f180
+   

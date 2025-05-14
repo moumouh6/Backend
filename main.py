@@ -1203,7 +1203,6 @@ async def request_conference(
     departement: str = Form(...),
     date: str = Form(...),  # Format: "YYYY-MM-DD"
     time: str = Form(...),  # Format: "HH:MM"
-    image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1239,24 +1238,6 @@ async def request_conference(
         "time": time,
         "requested_by_id": current_user.id
     }
-
-    # Handle image upload if provided
-    if image:
-        # Create a unique directory for conference images
-        image_dir = os.path.join("uploads", "conferences")
-        os.makedirs(image_dir, exist_ok=True)
-        
-        # Generate unique filename
-        file_extension = os.path.splitext(image.filename)[1]
-        unique_filename = f"conf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{file_extension}"
-        image_path = os.path.join(image_dir, unique_filename)
-        
-        # Save the file
-        with open(image_path, "wb") as buffer:
-            content = await image.read()
-            buffer.write(content)
-        
-        conference_data["image_path"] = image_path
 
     # Create new conference request
     new_conf = ConferenceRequest(**conference_data)
@@ -1381,26 +1362,6 @@ def get_conference(
         )
     
     return conference
-
-@app.get("/conferences/{conference_id}/image")
-async def get_conference_image(
-    conference_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db)
-):
-    conference = db.query(ConferenceRequest).filter(ConferenceRequest.id == conference_id).first()
-    
-    if not conference:
-        raise HTTPException(status_code=404, detail="Conference not found")
-    
-    if not conference.image_path or not os.path.exists(conference.image_path):
-        raise HTTPException(status_code=404, detail="Conference image not found")
-    
-    return FileResponse(
-        conference.image_path,
-        media_type="image/jpeg",  # Adjust based on your image type
-        filename=os.path.basename(conference.image_path)
-    )
 
 @app.get("/personal-info", response_model=UserPersonalInfo)
 def get_personal_info(

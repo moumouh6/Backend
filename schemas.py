@@ -138,7 +138,6 @@ class ConferenceRequestCreate(BaseModel):
     departement: str
     date: datetime
     time: str  # Format: "HH:MM"
-    image: Optional[UploadFile] = None
 
 class ConferenceRequestOut(BaseModel):
     id: int
@@ -149,7 +148,6 @@ class ConferenceRequestOut(BaseModel):
     departement: str
     date: datetime
     time: str
-    image_path: Optional[str]
     status: ConferenceStatus
     requested_by_id: int
     created_at: datetime
