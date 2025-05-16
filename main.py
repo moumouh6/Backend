@@ -51,6 +51,22 @@ from services.message_service import (
     mark_message_as_read,
     delete_message
 )
+from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+
+load_dotenv()
+
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+
+cloudinary.config(
+    cloud_name=CLOUDINARY_CLOUD_NAME,
+    api_key=CLOUDINARY_API_KEY,
+    api_secret=CLOUDINARY_API_SECRET
+)
 
 # Créer le dossier s’il n’existe pas
 os.makedirs("static/uploads", exist_ok=True)
@@ -356,9 +372,6 @@ def upload_course(
     quiz_link: str = Form(None),
     course_video: UploadFile = File(None)
 ):
-    upload_dir = "static/uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-
     # 1. Créer le cours
     course = Course(
         title=title,
@@ -376,49 +389,61 @@ def upload_course(
 
     materials = []
 
-    # 2. Enregistrer l'image du cours
-    image_filename = f"{course.id}_image_{course_image.filename}"
-    image_path = os.path.join(upload_dir, image_filename)
-    with open(image_path, "wb") as buffer:
-        shutil.copyfileobj(course_image.file, buffer)
+    # 2. Uploader l'image du cours sur Cloudinary
+    course_image.file.seek(0)
+    image_upload_result = cloudinary.uploader.upload(
+        course_image.file,
+        resource_type="image",
+        folder=f"courses/{course.id}/images",
+        public_id=f"{course.id}_image_{course_image.filename}"
+    )
+    image_url = image_upload_result.get("secure_url")
 
     image_material = CourseMaterial(
         course_id=course.id,
         file_name=course_image.filename,
-        file_path=f"/static/uploads/{image_filename}",
+        file_path=image_url,
         file_type=course_image.content_type,
         file_category="photo"
     )
     db.add(image_material)
     materials.append(image_material)
 
-    # 3. Enregistrer le PDF
-    pdf_filename = f"{course.id}_material_{course_pdf.filename}"
-    pdf_path = os.path.join(upload_dir, pdf_filename)
-    with open(pdf_path, "wb") as buffer:
-        shutil.copyfileobj(course_pdf.file, buffer)
+    # 3. Uploader le PDF sur Cloudinary (resource_type raw)
+    course_pdf.file.seek(0)
+    pdf_upload_result = cloudinary.uploader.upload(
+        course_pdf.file,
+        resource_type="raw",
+        folder=f"courses/{course.id}/pdfs",
+        public_id=f"{course.id}_material_{course_pdf.filename}"
+    )
+    pdf_url = pdf_upload_result.get("secure_url")
 
     pdf_material = CourseMaterial(
         course_id=course.id,
         file_name=course_pdf.filename,
-        file_path=f"/static/uploads/{pdf_filename}",
+        file_path=pdf_url,
         file_type=course_pdf.content_type,
         file_category="material"
     )
     db.add(pdf_material)
     materials.append(pdf_material)
 
-    # 4. Enregistrer la vidéo (si fournie)
+    # 4. Uploader la vidéo sur Cloudinary (si fournie)
     if course_video:
-        video_filename = f"{course.id}_record_{course_video.filename}"
-        video_path = os.path.join(upload_dir, video_filename)
-        with open(video_path, "wb") as buffer:
-            shutil.copyfileobj(course_video.file, buffer)
+        course_video.file.seek(0)
+        video_upload_result = cloudinary.uploader.upload(
+            course_video.file,
+            resource_type="video",
+            folder=f"courses/{course.id}/videos",
+            public_id=f"videonum{course.id}"
+        )
+        video_url = video_upload_result.get("secure_url")
 
         video_material = CourseMaterial(
             course_id=course.id,
             file_name=course_video.filename,
-            file_path=f"/static/uploads/{video_filename}",
+            file_path=video_url,
             file_type=course_video.content_type,
             file_category="record"
         )
@@ -437,6 +462,13 @@ def upload_course(
     }
 
     # 6. Préparer la réponse complète
+    # Cherche l'URL de l'image (catégorie photo)
+    image_url = None
+    for m in materials:
+        if m.file_category == "photo":
+            image_url = m.file_path
+            break
+
     response = {
         "id": course.id,
         "title": course.title,
@@ -448,6 +480,7 @@ def upload_course(
         "created_at": course.created_at,
         "updated_at": course.updated_at,
         "instructor": instructor_dict,
+        "image_url": image_url,
         "materials": [
             {
                 "id": m.id,
@@ -527,7 +560,7 @@ def get_courses(
                 }
                 for material in course.materials
             ],
-            "image_url": f"/courses/{course.id}/image" if course_image else None
+            "image_url": course_image.file_path if course_image else None
         }
         course_list.append(course_dict)
     
@@ -587,7 +620,7 @@ def get_courses_by_department(
                 }
                 for material in course.materials
             ],
-            "image_url": f"/courses/{course.id}/image" if course_image else None
+            "image_url": course_image.file_path if course_image else None
         }
         course_list.append(course_dict)
 
@@ -644,7 +677,7 @@ def get_course(
             }
             for material in course.materials
         ],
-        "image_url": f"/courses/{course.id}/image" if course_image else None
+         "image_url": course_image.file_path if course_image else None
     }
     
     return response

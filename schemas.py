@@ -55,6 +55,7 @@ class CourseMaterialBase(BaseModel):
     file_name: str
     file_type: str
     file_category: str  # 'photo', 'material', or 'record'
+    image_url: Optional[str] = None  # URL Cloudinary si c'est une image
 
 class CourseMaterialCreate(CourseMaterialBase):
     pass
