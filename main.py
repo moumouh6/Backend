@@ -92,7 +92,7 @@ def create_default_admin():
                 admin_user = User(
                     nom="Admin",
                     prenom="System",
-                    departement="Administration",
+                    departement="RH",
                     role="admin",
                     email=admin_email,
                     telephone="0000000000",
