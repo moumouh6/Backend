@@ -1403,8 +1403,6 @@ def get_personal_info(
 ):
     """Get user's personal information"""
     return {
-        "nom": current_user.nom,
-        "prenom": current_user.prenom,
         "telephone": current_user.telephone
     }
 
@@ -1415,10 +1413,6 @@ def update_personal_info(
     db: Session = Depends(get_db)
 ):
     """Update user's personal information"""
-    if info.nom is not None:
-        current_user.nom = info.nom
-    if info.prenom is not None:
-        current_user.prenom = info.prenom
     if info.telephone is not None:
         current_user.telephone = info.telephone
     

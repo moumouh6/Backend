@@ -190,16 +190,12 @@ class UserSettingsResponse(BaseModel):
         from_attributes = True
 
 class UserPersonalInfo(BaseModel):
-    nom: str
-    prenom: str
     telephone: str
 
     class Config:
         from_attributes = True
 
 class UserPersonalInfoUpdate(BaseModel):
-    nom: Optional[str] = None
-    prenom: Optional[str] = None
     telephone: Optional[str] = None
 
 class UserPreferences(BaseModel):
