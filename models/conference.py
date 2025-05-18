@@ -5,9 +5,9 @@ from database import Base
 import enum
 
 class ConferenceStatus(str, enum.Enum):
-    pending = "pending"
-    approved = "approved"
-    denied = "denied"
+    pending = "En attente"
+    approved = "Approuvé"
+    denied = "Refusé"
 
 class ConferenceRequest(Base):
     __tablename__ = "conference_requests"

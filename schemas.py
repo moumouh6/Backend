@@ -127,9 +127,9 @@ class MessageInDB(Message):
 
 
 class ConferenceStatus(str, Enum):
-    pending = "pending"
-    approved = "approved"
-    denied = "denied"
+    pending = "En attente"
+    approved = "Approuvé"
+    denied = "Refusé"
 
 class ConferenceRequestCreate(BaseModel):
     name: str
