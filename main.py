@@ -387,7 +387,7 @@ def upload_course(
     # 2. Uploader l'image du cours sur Cloudinary
     course_image.file.seek(0)
     image_upload_result = cloudinary.uploader.upload(
-        course_image.file,
+        course_image.file.read(),
         resource_type="image",
         folder=f"courses/{course.id}/images",
         public_id=f"{course.id}_image_{course_image.filename}"
@@ -407,7 +407,7 @@ def upload_course(
     # 3. Uploader le PDF sur Cloudinary (resource_type raw)
     course_pdf.file.seek(0)
     pdf_upload_result = cloudinary.uploader.upload(
-        course_pdf.file,
+        course_pdf.file.read(),
         resource_type="raw",
         folder=f"courses/{course.id}/pdfs",
         public_id=f"{course.id}_material_{course_pdf.filename}"
@@ -428,7 +428,7 @@ def upload_course(
     if course_video:
         course_video.file.seek(0)
         video_upload_result = cloudinary.uploader.upload(
-            course_video.file,
+            course_video.file.read(),
             resource_type="video",
             folder=f"courses/{course.id}/videos",
             public_id=f"videonum{course.id}"
