@@ -1264,7 +1264,9 @@ async def request_conference(
         "departement": departement,
         "date": conference_date,
         "time": time,
-        "requested_by_id": current_user.id
+        "requested_by_id": current_user.id,
+        # Set status to approved if user is admin
+        "status": ConferenceStatus.approved if current_user.role == "admin" else ConferenceStatus.pending
     }
 
     # Create new conference request
