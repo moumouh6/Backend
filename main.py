@@ -932,29 +932,59 @@ async def admin_dashboard(
             detail="Access denied. admin role required."
         )
     
-    # Get all courses
-    courses = db.query(Course).filter(Course.instructor_id == current_user.id).all()
+    # Get courses where current user is the instructor
+    courses = db.query(Course).options(
+        sqlalchemy.orm.joinedload(Course.instructor),
+        sqlalchemy.orm.joinedload(Course.materials)
+    ).filter(Course.instructor_id == current_user.id).all()
     
-    return [
-        {
+    # Prepare response with the same structure as get_courses
+    course_list = []
+    for course in courses:
+        # Find course image
+        course_image = next(
+            (material for material in course.materials if material.file_category == 'photo'),
+            None
+        )
+        
+        # Convert instructor to dictionary
+        instructor_dict = {
+            "id": course.instructor.id,
+            "nom": course.instructor.nom,
+            "prenom": course.instructor.prenom,
+            "email": course.instructor.email,
+            "departement": course.instructor.departement
+        } if course.instructor else None
+        
+        # Create course dictionary with additional information
+        course_dict = {
             "id": course.id,
             "title": course.title,
-            "description": course.description,
+            "description": course.description or "",
             "departement": course.departement,
-            "created_at": course.created_at.isoformat() if course.created_at else None,
+            "external_links": course.external_links or "",
+            "quiz_link": course.quiz_link or "",
+            "instructor_id": course.instructor_id,
+            "created_at": course.created_at,
+            "updated_at": course.updated_at,
+            "instructor": instructor_dict,
             "materials": [
                 {
                     "id": material.id,
+                    "course_id": material.course_id,
                     "file_name": material.file_name,
                     "file_type": material.file_type,
-                    "file_category": material.file_category,
-                    "uploaded_at": material.uploaded_at.isoformat() if material.uploaded_at else None
+                    "file_category": material.file_category or "material",
+                    "file_path": material.file_path,
+                    "uploaded_at": material.uploaded_at
                 }
                 for material in course.materials
-            ]
+            ],
+            "image_url": course_image.file_path if course_image else None
         }
-        for course in courses
-    ]
+        course_list.append(course_dict)
+    
+    return course_list
 
 @app.get("/dashboard/prof")
 async def prof_dashboard(
