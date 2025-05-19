@@ -56,21 +56,17 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 
-load_dotenv()
 
-CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
-CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
-CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+CLOUDINARY_CLOUD_NAME="plateforme"
+CLOUDINARY_API_KEY="232349857927888"
+CLOUDINARY_API_SECRET="E2gxDYwCsXBCWbhx8oRN8e3Hmzo"
+
 
 cloudinary.config(
     cloud_name=CLOUDINARY_CLOUD_NAME,
     api_key=CLOUDINARY_API_KEY,
     api_secret=CLOUDINARY_API_SECRET
 )
-
-# Créer le dossier s’il n’existe pas
-os.makedirs("static/uploads", exist_ok=True)
-
 
 
 # Create database tables
