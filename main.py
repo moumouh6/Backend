@@ -120,8 +120,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Servir les fichiers statiques
-app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
