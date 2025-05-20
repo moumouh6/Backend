@@ -404,11 +404,11 @@ def upload_course(
     db.add(image_material)
     materials.append(image_material)
 
-    # 3. Uploader le PDF sur Cloudinary (resource_type raw)
+    # 3. Uploader le PDF sur Cloudinary (resource_type auto)
     course_pdf.file.seek(0)
     pdf_upload_result = cloudinary.uploader.upload(
         course_pdf.file.read(),
-        resource_type="raw",
+        resource_type="auto",
         folder=f"courses/{course.id}/pdfs",
         public_id=f"{course.id}_material_{course_pdf.filename}"
     )
