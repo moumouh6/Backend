@@ -20,10 +20,11 @@ from schemas import (
     CourseCreate, Course as CourseSchema,
     CourseMaterial as CourseMaterialSchema,
     UserApproval, PendingUser, Notification,
-    MessageCreate, MessageInDB, ConferenceRequestCreate, ConferenceRequestOut, ConferenceStatus,
-    UserSettings, UserSettingsUpdate, UserProfileUpdate, PasswordUpdate, UserSettingsResponse,
-    UserPreferences, UserPreferencesUpdate, UserPersonalInfo, UserPersonalInfoUpdate,
-    CourseBase
+    NotificationResponse, MessageCreate, MessageInDB,
+    ConferenceRequestCreate, ConferenceRequestOut, ConferenceStatus,
+    UserSettings, UserSettingsUpdate, UserProfileUpdate, PasswordUpdate,
+    UserSettingsResponse, UserPreferences, UserPreferencesUpdate,
+    UserPersonalInfo, UserPersonalInfoUpdate, CourseBase
 )
 import shutil
 from auth import (
@@ -42,7 +43,12 @@ from services.notification_service import (
     notify_material_added,
     notify_course_progress,
     get_user_notifications,
-    mark_notification_as_read
+    mark_notification_as_read,
+    notify_new_course,
+    notify_professor_new_course,
+    notify_employer_new_course,
+    notify_conference_request,
+    notify_conference_status
 )
 from services.message_service import (
     create_message,
@@ -55,6 +61,7 @@ from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import re
 
 
 CLOUDINARY_CLOUD_NAME="plateforme"
@@ -371,7 +378,7 @@ def upload_course(
     course = Course(
         title=title,
         description=description,
-        instructor_id=current_user.id,  # Utiliser l'ID de l'utilisateur connecté
+        instructor_id=current_user.id,
         departement=departement,
         external_links=external_links,
         quiz_link=quiz_link,
@@ -406,13 +413,21 @@ def upload_course(
 
     # 3. Uploader le PDF sur Cloudinary (resource_type auto)
     course_pdf.file.seek(0)
+    # Clean filename
+    def clean_filename(filename):
+        # Remplace les espaces et caractères spéciaux par des underscores
+        return re.sub(r'[^A-Za-z0-9_.-]', '_', filename)
+
+    pdf_filename = clean_filename(os.path.splitext(course_pdf.filename)[0])
     pdf_upload_result = cloudinary.uploader.upload(
         course_pdf.file.read(),
         resource_type="auto",
         folder=f"courses/{course.id}/pdfs",
-        public_id=f"{course.id}_material_{course_pdf.filename}"
+        public_id=pdf_filename,
+        format="pdf"
     )
-    pdf_url = pdf_upload_result.get("secure_url")
+    # Construct URL in the desired format
+    pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/v{pdf_upload_result['version']}/{pdf_filename}.pdf"
 
     pdf_material = CourseMaterial(
         course_id=course.id,
@@ -489,6 +504,11 @@ def upload_course(
             for m in materials
         ]
     }
+
+    # Send notifications
+    notify_new_course(db, course)  # Notify admin
+    notify_professor_new_course(db, course)  # Notify professors in same department
+    notify_employer_new_course(db, course)  # Notify employers in same department
 
     return response
 
@@ -1159,14 +1179,23 @@ def delete_course_material(
     db.commit()
     return {"message": "Course material deleted successfully"}
 
-@app.get("/notifications/", response_model=List[Notification])
+@app.get("/notifications/", response_model=NotificationResponse)
 def get_notifications(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100
+    db: Session = Depends(get_db)
 ):
-    return get_user_notifications(db, current_user.id, skip, limit)
+    """
+    Get all notifications for the current user.
+    Notifications are automatically marked as read when fetched.
+    Returns both notifications and unread count.
+    """
+    try:
+        return get_user_notifications(db, current_user.id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching notifications: {str(e)}"
+        )
 
 @app.put("/notifications/{notification_id}/read")
 def mark_notification_read(
@@ -1174,10 +1203,30 @@ def mark_notification_read(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
-    notification = mark_notification_as_read(db, notification_id, current_user.id)
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification not found")
-    return {"message": "Notification marked as read"}
+    """Mark a specific notification as read"""
+    try:
+        notification = mark_notification_as_read(db, notification_id, current_user.id)
+        if not notification:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Notification not found or you don't have permission to access it"
+            )
+        return {
+            "message": "Notification marked as read",
+            "notification": {
+                "id": notification.id,
+                "title": notification.title,
+                "message": notification.message,
+                "type": notification.type,
+                "is_read": notification.is_read,
+                "created_at": notification.created_at
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error marking notification as read: {str(e)}"
+        )
 
 @app.post("/messages/", response_model=MessageInDB)
 async def send_message(
@@ -1285,8 +1334,8 @@ async def request_conference(
     link: Optional[str] = Form(None),
     type: str = Form(...),
     departement: str = Form(...),
-    date: str = Form(...),  # Format: "YYYY-MM-DD"
-    time: str = Form(...),  # Format: "HH:MM"
+    date: str = Form(...),
+    time: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1331,6 +1380,9 @@ async def request_conference(
     db.commit()
     db.refresh(new_conf)
     
+    # Notify admin about new conference request
+    notify_conference_request(db, current_user, name)
+
     return new_conf
 
 @app.put("/admin/approve/{conf_id}", response_model=ConferenceRequestOut)
@@ -1350,6 +1402,10 @@ def approve_conference(
     conf.status = ConferenceStatus.approved if approve else ConferenceStatus.denied
     db.commit()
     db.refresh(conf)
+
+    # Notify professor about conference status
+    notify_conference_status(db, conf.requested_by, conf.name, approve)
+
     return conf
 
 @app.get("/admin/pending-conferences", response_model=List[ConferenceRequestOut])

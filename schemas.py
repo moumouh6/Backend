@@ -100,6 +100,13 @@ class Notification(NotificationBase):
     class Config:
         from_attributes = True
 
+class NotificationResponse(BaseModel):
+    notifications: List[Notification]
+    unread_count: int
+
+    class Config:
+        from_attributes = True
+
 class MessageBase(BaseModel):
     content: str
     receiver_id: int
