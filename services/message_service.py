@@ -1,5 +1,6 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from models.message import Message
+from models.user import User
 from typing import List
 from fastapi import UploadFile
 import os
@@ -53,7 +54,11 @@ def create_message(
         db.commit()
         db.refresh(message)
     
-    return message
+    # Load relationships before returning
+    return db.query(Message).options(
+        joinedload(Message.sender),
+        joinedload(Message.receiver)
+    ).filter(Message.id == message.id).first()
 
 def get_user_messages(
     db: Session,
@@ -62,34 +67,68 @@ def get_user_messages(
     skip: int = 0,
     limit: int = 100
 ) -> List[Message]:
-    query = db.query(Message)
+    # Base query with only necessary joins
+    query = db.query(Message).options(
+        joinedload(Message.sender),
+        joinedload(Message.receiver)
+    )
     
     if message_type == "received":
         query = query.filter(Message.receiver_id == user_id)
     else:  # sent
         query = query.filter(Message.sender_id == user_id)
     
-    return query.order_by(Message.created_at.desc())\
+    # Execute query
+    messages = query.order_by(Message.created_at.desc())\
         .offset(skip)\
         .limit(limit)\
         .all()
+    
+    # Ensure all messages have their relationships loaded
+    for message in messages:
+        if not message.sender or not message.receiver:
+            # Reload individual message if relationships are missing
+            reloaded_message = db.query(Message).options(
+                joinedload(Message.sender),
+                joinedload(Message.receiver)
+            ).filter(Message.id == message.id).first()
+            
+            if reloaded_message:
+                # Ensure all required fields are present
+                message.sender = reloaded_message.sender
+                message.receiver = reloaded_message.receiver
+                message.sender_id = reloaded_message.sender_id
+                message.receiver_id = reloaded_message.receiver_id
+                
+                # If any required field is still missing, skip this message
+                if not message.sender or not message.receiver or not message.sender_id or not message.receiver_id:
+                    continue
+    
+    # Filter out any messages that still have missing relationships
+    return [msg for msg in messages if msg.sender and msg.receiver and msg.sender_id and msg.receiver_id]
 
 def get_message(
     db: Session,
     message_id: int,
     user_id: int
 ) -> Message:
-    message = db.query(Message)\
-        .filter(
-            Message.id == message_id,
-            (Message.sender_id == user_id) | (Message.receiver_id == user_id)
-        )\
-        .first()
+    message = db.query(Message).options(
+        joinedload(Message.sender),
+        joinedload(Message.receiver)
+    ).filter(
+        Message.id == message_id,
+        (Message.sender_id == user_id) | (Message.receiver_id == user_id)
+    ).first()
     
     if message and message.receiver_id == user_id and not message.is_read:
         message.is_read = True
         db.commit()
         db.refresh(message)
+        # Reload message with relationships after update
+        message = db.query(Message).options(
+            joinedload(Message.sender),
+            joinedload(Message.receiver)
+        ).filter(Message.id == message_id).first()
     
     return message
 
@@ -98,17 +137,23 @@ def mark_message_as_read(
     message_id: int,
     user_id: int
 ) -> Message:
-    message = db.query(Message)\
-        .filter(
-            Message.id == message_id,
-            Message.receiver_id == user_id
-        )\
-        .first()
+    message = db.query(Message).options(
+        joinedload(Message.sender),
+        joinedload(Message.receiver)
+    ).filter(
+        Message.id == message_id,
+        Message.receiver_id == user_id
+    ).first()
     
     if message:
         message.is_read = True
         db.commit()
         db.refresh(message)
+        # Reload message with relationships after update
+        message = db.query(Message).options(
+            joinedload(Message.sender),
+            joinedload(Message.receiver)
+        ).filter(Message.id == message_id).first()
     
     return message
 

@@ -125,9 +125,20 @@ class Message(MessageBase):
     class Config:
         from_attributes = True
 
+class UserMessage(BaseModel):
+    id: int
+    nom: str
+    prenom: str
+    email: str
+    departement: str
+    role: str
+
+    class Config:
+        from_attributes = True
+
 class MessageInDB(Message):
-    sender: User
-    receiver: User
+    sender: UserMessage
+    receiver: UserMessage
 
     class Config:
         from_attributes = True
